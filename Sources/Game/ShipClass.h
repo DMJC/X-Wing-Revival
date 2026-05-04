@@ -44,6 +44,7 @@ public:
 	double ShieldRechargeDelay;
 	double ShieldRechargeRate;
 	double ExplosionRate;
+	double ExplosionStagger;
 	std::map< std::string, double > Subsystems;
 	//std::vector<Vec3D> SubsystemCenters;
 	//std::vector<std::string> SubsystemNames;

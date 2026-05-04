@@ -1,0 +1,29 @@
+id Reactor
+name Reactor
+category target
+team empire
+radius 1000
+speed 0
+accel 0
+roll 0
+pitch 0
+yaw 0
+health 10000
+shield 10000
+recover 10
+recharge 0
+ramming 10000
+explode -0.007
+subsystem ShieldGenerator 499.9
+subsystem CriticalCore 189.9
+model endor_reactor.obj
+model_collision endor_reactor.obj
+model_scale 1000
+engine 0 175 0 engine_blue.ani 260 1 1 1 0.6
+engine 0 80 0 engine_blue.ani 250 1 1 1 0.5
+engine 0 -15 0 engine_blue.ani 240 1 1 1 0.6
+engine 0 -110 0 engine_blue.ani 250 1 1 1 0.7
+engine 0 -205 0 engine_blue.ani 260 1 1 1 0.6
+engine 0 -300 0 engine_blue.ani 250 1 1 1 0.7
+engine 0 -385 0 engine_blue.ani 240 1 1 1 0.6
+engine 0 -480 0 engine_blue.ani 250 1 1 1 0.5

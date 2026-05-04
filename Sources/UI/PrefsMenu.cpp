@@ -54,6 +54,7 @@ PrefsMenu::PrefsMenu( void )
 	WatchSetting( "g_shader_version" );
 	WatchSetting( "g_shader_light_quality" );
 	WatchSetting( "g_shader_point_lights" );
+	WatchSetting( "g_shader_glowmap" );
 	WatchSetting( "g_shader_blastpoints" );
 	WatchSetting( "g_shader_blastpoint_quality" );
 #if SDL_VERSION_ATLEAST(2,0,0)
@@ -277,6 +278,9 @@ void PrefsMenu::UpdateContents( void )
 		af_dropdown->AddItem( "-1", "Linear" );
 		af_dropdown->Update();
 		group->AddElement( af_dropdown );
+		rect.w = 60;
+		rect.x = group_rect.w - rect.w - 10;
+		group->AddElement( new PrefsMenuCheckBox( &rect, LabelFont, "Glow", "g_shader_glowmap" ) );
 		
 		rect.x = 10;
 		rect.y += rect.h + 8;
@@ -888,10 +892,12 @@ void PrefsMenu::UpdateContents( void )
 		rect.x += rect.w + 5;
 		rect.w = 65;
 		PrefsMenuDropDown *s_depth_dropdown = new PrefsMenuDropDown( &rect, ItemFont, Font::ALIGN_MIDDLE_CENTER, 0, "s_depth" );
+		s_depth_dropdown->AddItem( "8",  "8-Bit" );
 		s_depth_dropdown->AddItem( "16", "16-Bit" );
-		s_depth_dropdown->AddItem( "24", "24-Bit" );
-		s_depth_dropdown->AddItem( "32", "Float" );
+		s_depth_dropdown->AddItem( "32", "32-Bit" );
 #if SDL_VERSION_ATLEAST(2,0,0)
+		if( Raptor::Game->Cfg.SettingAsInt("s_depth") >= 24 )  // Gracefully import old configs.
+			s_depth_dropdown->Value = "32";
 		s_depth_dropdown->Update();
 #else
 		s_depth_dropdown->LabelText = "16-Bit";
@@ -2198,7 +2204,8 @@ void PrefsMenuSillyButton::Clicked( Uint8 button )
 		TimesClicked = 6;
 		
 		Raptor::Game->Cfg.Command( "pew" );
-		Raptor::Game->Snd.Play( Raptor::Game->Res.GetSound("laser_green.wav") );
+		Raptor::Game->Snd.Play( Raptor::Game->Res.GetSound("laser_green.wav"), 90, 1 );
+		Raptor::Game->Snd.Play( Raptor::Game->Res.GetSound("tie_slow.wav"),   270, 1 );
 	}
 }
 

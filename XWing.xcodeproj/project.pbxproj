@@ -112,6 +112,7 @@
 		2CE636932D1ECE7F00BA007C /* Microphone.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2CE636902D1ECE7F00BA007C /* Microphone.cpp */; };
 		2CE636962D1ECE8B00BA007C /* PlaybackBuffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2CE636942D1ECE8700BA007C /* PlaybackBuffer.cpp */; };
 		2CEFC42A1EBBADD90044B237 /* HeadState.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2CEFC4281EBBADD90044B237 /* HeadState.cpp */; };
+		2CFBABA42FA88C3D00B467BA /* Obstacle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2CFBABA22FA88C3D00B467BA /* Obstacle.cpp */; };
 		8D11072B0486CEB800E47090 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 089C165CFE840E0CC02AAC07 /* InfoPlist.strings */; };
 /* End PBXBuildFile section */
 
@@ -337,6 +338,8 @@
 		2CE636952D1ECE8B00BA007C /* PlaybackBuffer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlaybackBuffer.h; sourceTree = "<group>"; };
 		2CEFC4281EBBADD90044B237 /* HeadState.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HeadState.cpp; sourceTree = "<group>"; };
 		2CEFC4291EBBADD90044B237 /* HeadState.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HeadState.h; sourceTree = "<group>"; };
+		2CFBABA22FA88C3D00B467BA /* Obstacle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Obstacle.cpp; sourceTree = "<group>"; };
+		2CFBABA32FA88C3D00B467BA /* Obstacle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Obstacle.h; sourceTree = "<group>"; };
 		8D1107310486CEB800E47090 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		8D1107320486CEB800E47090 /* X-Wing Revival.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "X-Wing Revival.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -449,6 +452,8 @@
 				2CCB58F12B745B5F00A8B03A /* DockingBay.h */,
 				2C53CE8F2BE05ACF007F7E8C /* Mission.cpp */,
 				2C53CE902BE05ACF007F7E8C /* Mission.h */,
+				2CFBABA22FA88C3D00B467BA /* Obstacle.cpp */,
+				2CFBABA32FA88C3D00B467BA /* Obstacle.h */,
 				2CD2DD1B191D6D08003E46AA /* RenderLayer.cpp */,
 				2CD2DD1C191D6D08003E46AA /* RenderLayer.h */,
 				2CD2DD1D191D6D08003E46AA /* Ship.cpp */,
@@ -906,6 +911,7 @@
 				2CE636922D1ECE7F00BA007C /* IMA.cpp in Sources */,
 				2CE636932D1ECE7F00BA007C /* Microphone.cpp in Sources */,
 				2CE636962D1ECE8B00BA007C /* PlaybackBuffer.cpp in Sources */,
+				2CFBABA42FA88C3D00B467BA /* Obstacle.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

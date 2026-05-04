@@ -83,6 +83,7 @@ public:
 	void KnockCockpit( const Vec3D *dir, double force );
 	void SetBlastPoint( double x, double y, double z, double radius, double time = 0. );
 	
+	bool Disabled( void ) const;
 	void SetRoll( double roll, double dt );
 	void SetPitch( double pitch, double dt );
 	void SetYaw( double yaw, double dt );
@@ -180,11 +181,12 @@ public:
 	};
 	enum
 	{
-		HIT_REAR_OLD = 0x01, // FIXME: For compatibility with v0.3.2/v0.3.3.
+		HIT_SPLATTER = 0x01,
 		HIT_FRONT    = 0x02,
 		HIT_REAR     = 0x04,
 		HIT_HULL     = 0x08,
-		HIT_REPAIR   = 0x10
+		HIT_REPAIR   = 0x10,
+		HIT_ION      = 0x20
 	};
 };
 

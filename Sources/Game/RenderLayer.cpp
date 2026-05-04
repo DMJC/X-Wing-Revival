@@ -20,6 +20,7 @@
 #include "DeathStar.h"
 #include "DeathStarBox.h"
 #include "Asteroid.h"
+#include "Obstacle.h"
 #include "Turret.h"
 #include "Checkpoint.h"
 
@@ -228,7 +229,9 @@ void RenderLayer::SetWorldLights( bool deathstar, float ambient_scale, const std
 				if( similarity < 0. )
 					continue;
 				
-				color[ i ] /= pow( obst_length, sqrt(similarity) );
+				double darken = pow( obst_length, sqrt(similarity) );
+				if( darken > 1. )
+					color[ i ] /= darken;
 			}
 		}
 		
@@ -247,6 +250,32 @@ void RenderLayer::SetDynamicLights( Pos3D *pos, Pos3D *offset, int dynamic_light
 	char uniform_name[ 128 ] = "";
 	
 	ClearDynamicLights();
+	
+	// If we are rendering a second view (VR eyes, and maybe future split-screen) reuse the dynamic lights we already found.
+	if( ! Raptor::Game->FrameTime )
+	{
+		std::map<Pos3D*,DynamicLights>::const_iterator cached = DynamicLightCache.find( pos );
+		if( cached != DynamicLightCache.end() )
+		{
+			dynamic_lights = std::min<int>( dynamic_lights, cached->second.Count );
+			
+			for( int i = 0; i < dynamic_lights; i ++ )
+			{
+				snprintf( uniform_name, 128, "PointLight%iPos", i );
+				if( offset )
+					Raptor::Game->ShaderMgr.Set3f( uniform_name, cached->second.Position[ i ].X - offset->X, cached->second.Position[ i ].Y - offset->Y, cached->second.Position[ i ].Z - offset->Z );
+				else
+					Raptor::Game->ShaderMgr.Set3f( uniform_name, cached->second.Position[ i ].X, cached->second.Position[ i ].Y, cached->second.Position[ i ].Z );
+				
+				snprintf( uniform_name, 128, "PointLight%iColor", i );
+				Raptor::Game->ShaderMgr.Set3f( uniform_name, cached->second.LightColor[ i ].Red, cached->second.LightColor[ i ].Green, cached->second.LightColor[ i ].Blue );
+				snprintf( uniform_name, 128, "PointLight%iRadius", i );
+				Raptor::Game->ShaderMgr.Set1f( uniform_name, cached->second.LightColor[ i ].Alpha );
+			}
+			
+			return;
+		}
+	}
 	
 	// Sort all possible light sources by proximity to the object we are drawing.
 	std::multimap<double,Pos3D*> nearest_shots   = pos->Nearest( (std::list<Pos3D*> *) shots,   dynamic_lights );
@@ -338,6 +367,14 @@ void RenderLayer::SetDynamicLights( Pos3D *pos, Pos3D *offset, int dynamic_light
 		Raptor::Game->ShaderMgr.Set3f( uniform_name, color.Red, color.Green, color.Blue );
 		snprintf( uniform_name, 128, "PointLight%iRadius", i );
 		Raptor::Game->ShaderMgr.Set1f( uniform_name, color.Alpha );
+		
+		// If we are rendering to a framebuffer (VR eyes, and maybe future split-screen) cache dynamic lights to reuse for additional framebuffers.
+		if( Raptor::Game->Gfx.DrawTo && (i < 4) )
+		{
+			DynamicLightCache[ pos ].Count = i + 1;
+			DynamicLightCache[ pos ].Position[ i ].Set( nearest->X, nearest->Y, nearest->Z );
+			DynamicLightCache[ pos ].LightColor[ i ] = color;
+		}
 	}
 }
 
@@ -476,6 +513,12 @@ void RenderLayer::Draw( void )
 	}
 	
 	
+	// Dynamic light cache is just used to speed up VR rendering of the second eye, so clear it on every real new frame.
+	
+	if( game->FrameTime )
+		DynamicLightCache.clear();
+	
+	
 	// Build a list of all ships, because we'll refer to it often.
 	// Also build a list of shots for use when determining dynamic lights.
 	// And keep track of the Death Star trench location for chase camera and darkening world lights.
@@ -485,6 +528,7 @@ void RenderLayer::Draw( void )
 	Turret *player_turret = NULL;
 	std::list<Shot*> shots;
 	std::list<Asteroid*> asteroids;
+	std::list<Obstacle*> obstacles;
 	DeathStar *deathstar = NULL;
 	for( std::map<uint32_t,GameObject*>::iterator obj_iter = game->Data.GameObjects.begin(); obj_iter != game->Data.GameObjects.end(); obj_iter ++ )
 	{
@@ -494,6 +538,8 @@ void RenderLayer::Draw( void )
 			shots.push_back( (Shot*) obj_iter->second );
 		else if( obj_iter->second->Type() == XWing::Object::ASTEROID )
 			asteroids.push_back( (Asteroid*) obj_iter->second );
+		else if( obj_iter->second->Type() == XWing::Object::OBSTACLE )
+			obstacles.push_back( (Obstacle*) obj_iter->second );
 		else if( obj_iter->second->Type() == XWing::Object::DEATH_STAR )
 			deathstar = (DeathStar*) obj_iter->second;
 		else if( obj_iter->second->Type() == XWing::Object::TURRET )
@@ -809,10 +855,27 @@ void RenderLayer::Draw( void )
 	else if( (game->View == XWing::View::GUNNER) && ! observed_turret )
 		game->View = XWing::View::CHASE;
 	
+	if( ejected && vr && (observed_ship->PlayerID == game->PlayerID) && (observed_ship->DeathClock.ElapsedSeconds() >= 2.) )
+		game->View = XWing::View::STATIONARY;
+	
 	if( game->View == XWing::View::STATIONARY )
 	{
 		observed_ship = NULL;
 		observed_turret = NULL;
+	}
+	
+	if( observed_ship && (! vr) && (observed_ship->PlayerID == game->PlayerID) && (observed_ship->Health <= 0.)
+	&&  observed_ship->HitByID && (observed_ship->HitClock.ElapsedSeconds() < 15.) && (observed_ship->DeathClock.ElapsedSeconds() >= 3.)
+	&&  ((! deathstar) || (observed_ship->DistAlong( &(deathstar->Up), deathstar ) > 0.)) )
+	{
+		const GameObject *hit_by = game->Data.GetObject( observed_ship->HitByID );
+		const Ship *hit_by_ship = NULL;
+		if( hit_by && (hit_by->Type() == XWing::Object::SHIP) )
+			hit_by_ship = (const Ship*) hit_by;
+		else if( hit_by && (hit_by->Type() == XWing::Object::TURRET) )
+			hit_by_ship = ((const Turret*) hit_by )->ParentShip();
+		if( hit_by_ship )
+			game->View = XWing::View::CINEMA;
 	}
 	
 	
@@ -848,25 +911,49 @@ void RenderLayer::Draw( void )
 		}
 		
 		
-		Ship *cinema_view_with = NULL;
+		const Ship *cinema_view_with = NULL;
 		if( game->View == XWing::View::CINEMA )
 		{
 			double best = 0.;
 			
-			// Try to focus the cinema view on an alive or recently-dead enemy.
-			for( std::list<Ship*>::iterator ship_iter = ships.begin(); ship_iter != ships.end(); ship_iter ++ )
+			// Prioritize seeing the ship that just killed ours.
+			if( (observed_ship->Health <= 0.) && observed_ship->HitByID && (observed_ship->HitClock.ElapsedSeconds() < 15.) )
 			{
-				if( (*ship_iter)->ID != observed_ship->ID )
+				const GameObject *hit_by = game->Data.GetObject( observed_ship->HitByID );
+				if( hit_by && (hit_by->Type() == XWing::Object::SHIP) )
+					cinema_view_with = (const Ship*) hit_by;
+				else if( hit_by && (hit_by->Type() == XWing::Object::TURRET) )
+					cinema_view_with = ((const Turret*) hit_by )->ParentShip();
+				
+				// If the ship that killed us is now dead, look at their killer.
+				if( cinema_view_with && (cinema_view_with->Health <= 0.) && (cinema_view_with->HitByID != observed_ship->ID) && (cinema_view_with->DeathClock.ElapsedSeconds() > 2.) )
 				{
-					Ship *ship = *ship_iter;
-					
-					if( (ship->Team != observed_ship->Team) && ((ship->Health > 0.) || (ship->DeathClock.ElapsedSeconds() <= 5.)) )
+					hit_by = game->Data.GetObject( cinema_view_with->HitByID );
+					cinema_view_with = NULL;
+					if( hit_by && (hit_by->Type() == XWing::Object::SHIP) )
+						cinema_view_with = (const Ship*) hit_by;
+					else if( hit_by && (hit_by->Type() == XWing::Object::TURRET) )
+						cinema_view_with = ((const Turret*) hit_by )->ParentShip();
+				}
+			}
+			
+			// Try to focus the cinema view on an alive or recently-dead enemy.
+			if( ! cinema_view_with )
+			{
+				for( std::list<Ship*>::iterator ship_iter = ships.begin(); ship_iter != ships.end(); ship_iter ++ )
+				{
+					if( (*ship_iter)->ID != observed_ship->ID )
 					{
-						double dist = observed_ship->Dist( ship );
-						if( (dist < best) || (! cinema_view_with) )
+						Ship *ship = *ship_iter;
+						
+						if( (ship->Team != observed_ship->Team) && ((ship->Health > 0.) || (ship->DeathClock.ElapsedSeconds() <= 5.)) )
 						{
-							best = dist;
-							cinema_view_with = ship;
+							double dist = observed_ship->Dist( ship );
+							if( (dist < best) || (! cinema_view_with) )
+							{
+								best = dist;
+								cinema_view_with = ship;
+							}
 						}
 					}
 				}
@@ -1007,7 +1094,13 @@ void RenderLayer::Draw( void )
 			if( lifetime < 1.5 )
 				camera_dist *= cos( lifetime * M_PI / 1.5 ) + 2.;
 			else if( observed_ship->Health <= 0. )
-				camera_dist += observed_ship->DeathClock.ElapsedSeconds() * -35.;
+			{
+				double dead_time = observed_ship->DeathClock.ElapsedSeconds();
+				if( observed_ship->Class )
+					dead_time -= observed_ship->Class->ExplosionStagger;
+				if( dead_time > 0. )
+					camera_dist += dead_time * -35.;
+			}
 			Cam.MoveAlong( &(Cam.Fwd), camera_dist );
 			
 			if( deathstar )
@@ -1143,7 +1236,7 @@ void RenderLayer::Draw( void )
 	{
 		game->ShaderMgr.ResumeShaders();
 		game->ShaderMgr.Set3f( "CamPos", game->Cam.X, game->Cam.Y, game->Cam.Z );
-		SetWorldLights( deathstar );
+		SetWorldLights( game->GameType == XWing::GameType::BATTLE_OF_YAVIN );
 		ClearDynamicLights();
 		blastpoints = game->BlastPoints;
 		ClearBlastPoints( std::max<int>( blastpoints, prev_blastpoints ) );
@@ -1202,7 +1295,7 @@ void RenderLayer::Draw( void )
 	if( game->Gfx.Framebuffers && game->FrameTime )
 	{
 		bool changed_framebuffer = false;
-		double display_noise = (observed_ship && (observed_ship->Health < (observed_ship->MaxHealth() * 0.25))) ? game->Cfg.SettingAsDouble("g_display_noise",1.) : 0.;
+		double display_noise = (observed_ship && ((observed_ship->Health < (observed_ship->MaxHealth() * 0.25)) || observed_ship->Disabled())) ? game->Cfg.SettingAsDouble("g_display_noise",1.) : 0.;
 		
 		if( observed_ship && (observed_ship->Health > 0.) && ((game->View == XWing::View::COCKPIT) || (game->View == XWing::View::INSTRUMENTS) || game->Cfg.SettingAsBool("saitek_enable")) )
 		{
@@ -1628,7 +1721,7 @@ void RenderLayer::Draw( void )
 						{
 							if( target->Category() == ShipClass::CATEGORY_TARGET )
 							{
-								if( target->Health < (target->MaxHealth() * 0.7) )
+								if( (target->Health < (target->MaxHealth() * 0.7)) && ! target->CanCollideWithOwnType() )
 									target_status = "SURFACE\nIMPACT";
 							}
 							else
@@ -1729,7 +1822,12 @@ void RenderLayer::Draw( void )
 								// Clean up name.
 								const char *subsystem_name_cstr = subsystem_name.c_str();
 								if( strncmp( subsystem_name_cstr, "ShieldGen", strlen("ShieldGen") ) == 0 )
-									subsystem_name = classic ? "Shield Generator" : "SHIELD GEN";
+								{
+									if( target->Category() == ShipClass::CATEGORY_TARGET )
+										subsystem_name = classic ? "Power Regulator" : "POWER REG";
+									else
+										subsystem_name = classic ? "Shield Generator" : "SHIELD GEN";
+								}
 								else
 								{
 									// Remove "Critical" prefix.
@@ -1925,7 +2023,7 @@ void RenderLayer::Draw( void )
 							glVertex2d( cx - 50, cy - 30 );
 						glEnd();
 					}
-					else if( target && (target->Category() == ShipClass::CATEGORY_TARGET) && (lock_wait > 0.f) )
+					else if( target && (target->Category() == ShipClass::CATEGORY_TARGET) && (lock_wait > 0.f) && ! target->CanCollideWithOwnType() )
 					{
 						// Draw Death Star trench grid lines.
 						
@@ -2446,7 +2544,7 @@ void RenderLayer::Draw( void )
 					}
 				}
 				
-				for( std::list<Ship*>::iterator ship_iter = ships.begin(); ship_iter != ships.end(); ship_iter ++ )
+				for( std::list<Ship*>::const_iterator ship_iter = ships.begin(); ship_iter != ships.end(); ship_iter ++ )
 				{
 					// Look for light obstructions from large ships nearby.
 					if( (*ship_iter)->Radius() < observed_ship->Radius() * 2. )
@@ -2461,7 +2559,58 @@ void RenderLayer::Draw( void )
 					}
 				}
 				
-				for( std::list<Asteroid*>::iterator asteroid_iter = asteroids.begin(); asteroid_iter != asteroids.end(); asteroid_iter ++ )
+				for( std::list<Obstacle*>::const_iterator obstacle_iter = obstacles.begin(); obstacle_iter != obstacles.end(); obstacle_iter ++ )
+				{
+					// Look for light obstructions from obstacles nearby.
+					Obstacle *obstacle = *obstacle_iter;
+					double along_fwd   = observed_ship->DistAlong( &(obstacle->Fwd),   obstacle ) * 2. / obstacle->Shape.GetLength();
+					double along_up    = observed_ship->DistAlong( &(obstacle->Up),    obstacle ) * 2. / obstacle->Shape.GetHeight();
+					double along_right = observed_ship->DistAlong( &(obstacle->Right), obstacle ) * 2. / obstacle->Shape.GetWidth();
+					if( (fabs(along_fwd) > 1.5) || (fabs(along_up) > 1.5) || (fabs(along_right) > 1.5) )
+						continue;
+					
+					ambient_scale *= pow( std::min<double>( 1., std::max<double>( fabs(along_fwd), std::max<double>( fabs(along_up), fabs(along_right) ) ) ), 1.5 );
+					change_light_for_cockpit = true;
+					
+					if( along_fwd > -1. )
+					{
+						double along_dir = along_fwd;
+						double darken = 1. - ((along_dir > 0.) ? std::min<double>( 1., 1.5 - along_dir ) : (1. - along_dir * -1.));
+						obstructions.push_back( obstacle->Fwd * -0.007 * (1. + darken * obstacle->Shape.GetLength()) );
+					}
+					if( along_fwd < 1. )
+					{
+						double along_dir = along_fwd * -1.;
+						double darken = 1. - ((along_dir > 0.) ? std::min<double>( 1., 1.5 - along_dir ) : (1. - along_dir * -1.));
+						obstructions.push_back( obstacle->Fwd * 0.007 * (1. + darken * obstacle->Shape.GetLength()) );
+					}
+					if( along_up > -1. )
+					{
+						double along_dir = along_up;
+						double darken = 1. - ((along_dir > 0.) ? std::min<double>( 1., 1.5 - along_dir ) : (1. - along_dir * -1.));
+						obstructions.push_back( obstacle->Up * -0.007 * (1. + darken * obstacle->Shape.GetHeight()) );
+					}
+					if( along_up < 1. )
+					{
+						double along_dir = along_up * -1.;
+						double darken = 1. - ((along_dir > 0.) ? std::min<double>( 1., 1.5 - along_dir ) : (1. - along_dir * -1.));
+						obstructions.push_back( obstacle->Up * 0.007 * (1. + darken * obstacle->Shape.GetHeight()) );
+					}
+					if( along_right > -1. )
+					{
+						double along_dir = along_right;
+						double darken = 1. - ((along_dir > 0.) ? std::min<double>( 1., 1.5 - along_dir ) : (1. - along_dir * -1.));
+						obstructions.push_back( obstacle->Right * -0.007 * (1. + darken * obstacle->Shape.GetWidth()) );
+					}
+					if( along_right < 1. )
+					{
+						double along_dir = along_right * -1.;
+						double darken = 1. - ((along_dir > 0.) ? std::min<double>( 1., 1.5 - along_dir ) : (1. - along_dir * -1.));
+						obstructions.push_back( obstacle->Right * 0.007 * (1. + darken * obstacle->Shape.GetWidth()) );
+					}
+				}
+				
+				for( std::list<Asteroid*>::const_iterator asteroid_iter = asteroids.begin(); asteroid_iter != asteroids.end(); asteroid_iter ++ )
 				{
 					// Look for light obstructions from asteroids nearby.
 					double obstructed = (*asteroid_iter)->Radius * 2. / (*asteroid_iter)->Dist( observed_ship );
@@ -2475,7 +2624,7 @@ void RenderLayer::Draw( void )
 				}
 				
 				if( change_light_for_cockpit )
-					SetWorldLights( deathstar, ambient_scale, obstructions.size() ? &obstructions : NULL );
+					SetWorldLights( (game->GameType == XWing::GameType::BATTLE_OF_YAVIN), ambient_scale, obstructions.size() ? &obstructions : NULL );
 				
 				if( dynamic_lights )
 					SetDynamicLights( observed_ship, observed_ship, dynamic_lights, &shots, &effects );
@@ -2553,7 +2702,7 @@ void RenderLayer::Draw( void )
 			
 			// Reset world lights to normal.
 			if( change_light_for_cockpit )
-				SetWorldLights( deathstar );
+				SetWorldLights( game->GameType == XWing::GameType::BATTLE_OF_YAVIN );
 			
 			if( use_shaders )
 			{
@@ -2580,11 +2729,13 @@ void RenderLayer::Draw( void )
 		double blast_fighter = game->Cfg.SettingAsDouble( "g_blast_fighter", 10000. );
 		double blast_turret = game->Cfg.SettingAsDouble( "g_blast_turret", 10000. );
 		double blast_asteroid = game->Cfg.SettingAsDouble( "g_blast_asteroid", 4000. );
+		double blast_obstacle = game->Cfg.SettingAsDouble( "g_blast_obstacle", 10000. );
 		bool engine_glow = game->Cfg.SettingAsBool( "g_engine_glow", true );
 		float engine_glow_cockpit = game->Cfg.SettingAsDouble( "g_engine_glow_cockpit", 0.5 );
+		bool within_deathstar_tunnels = deathstar && (Cam.DistAlong( &(deathstar->Up), deathstar) < -500.);
 		
 		std::multimap<double,Renderable> sorted_renderables;
-		std::map< Shader*, std::set<Asteroid*> > asteroid_shaders;
+		std::map< Shader*, std::set<BlastableObject*> > deferred_shaders;
 		
 		for( std::map<uint32_t,GameObject*>::iterator obj_iter = game->Data.GameObjects.begin(); obj_iter != game->Data.GameObjects.end(); obj_iter ++ )
 		{
@@ -2656,7 +2807,7 @@ void RenderLayer::Draw( void )
 				// Draw engine glows later, with the other transparent renderables.
 				if( ship->Health > 0. )
 				{
-					double ship_throttle = ship->GetThrottle();
+					double ship_throttle = ship->MaxSpeed() ? ship->GetThrottle() : 1.;
 					if( (ship_throttle >= 0.75) && ship->Engines.size() && engine_glow )
 					{
 						float engine_alpha = (ship_throttle - 0.75f) * 4.f * ship->EngineFlicker;
@@ -2693,13 +2844,37 @@ void RenderLayer::Draw( void )
 					if( shader )
 					{
 						// If this asteroid wants to use a different shader (far away / no blastpoints) delay rendering it to reduce shader changes.
-						asteroid_shaders[ shader ].insert( asteroid );
+						deferred_shaders[ shader ].insert( asteroid );
 						continue;
 					}
 					
 					// Show asteroid blastpoints if enabled and close enough.
 					if( dist <= blast_asteroid )
 						bp_vec = &(asteroid->BlastPoints);
+				}
+			}
+			else if( obj_iter->second->Type() == XWing::Object::OBSTACLE )
+			{
+				Obstacle *obstacle = (Obstacle*) obj_iter->second;
+				double dist = game->Cam.Dist(obstacle) - obstacle->Shape.GetMaxRadius();
+				
+				// Don't draw obstacles far away.
+				if( dist > draw_dist )
+					continue;
+				
+				if( use_shaders )
+				{
+					Shader *shader = obstacle->WantShader();
+					if( shader )
+					{
+						// If this obstacle wants to use a different shader (far away / no blastpoints) delay rendering it to reduce shader changes.
+						deferred_shaders[ shader ].insert( obstacle );
+						continue;
+					}
+					
+					// Show obstacle blastpoints if enabled and close enough.
+					if( dist <= blast_obstacle )
+						bp_vec = &(obstacle->BlastPoints);
 				}
 			}
 			else if( obj_iter->second->Type() == XWing::Object::TURRET )
@@ -2715,6 +2890,10 @@ void RenderLayer::Draw( void )
 				if( turret->DistAlong( &(game->Cam.Fwd), &(game->Cam) ) < -100. )
 					continue;
 				
+				// Don't draw surface turrets when camera is inside the Death Star II.
+				if( within_deathstar_tunnels )
+					continue;
+				
 				// Show turret blastpoints if enabled and close enough.
 				if( dist <= blast_turret )
 					bp_vec = &(turret->BlastPoints);
@@ -2723,8 +2902,12 @@ void RenderLayer::Draw( void )
 			{
 				DeathStarBox *box = (DeathStarBox*) obj_iter->second;
 				
-				// Don't draw boxes far away.
-				if( game->Cam.Dist(box) > draw_dist )
+				// Don't draw small boxes far away.
+				if( (! box->Plate) && (game->Cam.Dist(box) > draw_dist) )
+					continue;
+				
+				// Don't draw surface boxes when camera is inside the Death Star II.
+				if( within_deathstar_tunnels && (! box->Plate) && (box->DistAlong( &(deathstar->Up), deathstar ) > 0.) )
 					continue;
 				
 				// Don't draw boxes that are entirely behind us.
@@ -2751,25 +2934,25 @@ void RenderLayer::Draw( void )
 			Shader *prev_shader = game->ShaderMgr.Selected;
 			bool changed_shader = false;
 			
-			for( std::map< Shader*, std::set<Asteroid*> >::iterator shader_iter = asteroid_shaders.begin(); shader_iter != asteroid_shaders.end(); shader_iter ++ )
+			for( std::map< Shader*, std::set<BlastableObject*> >::iterator shader_iter = deferred_shaders.begin(); shader_iter != deferred_shaders.end(); shader_iter ++ )
 			{
 				game->ShaderMgr.SelectAndCopyVars( shader_iter->first );
 				changed_shader = true;
 				
-				for( std::set<Asteroid*>::iterator asteroid_iter = shader_iter->second.begin(); asteroid_iter != shader_iter->second.end(); asteroid_iter ++ )
+				for( std::set<BlastableObject*>::iterator obj_iter = shader_iter->second.begin(); obj_iter != shader_iter->second.end(); obj_iter ++ )
 				{
-					Asteroid *asteroid = *asteroid_iter;
+					BlastableObject *obj = *obj_iter;
 					
 					if( dynamic_lights )
-						SetDynamicLights( asteroid, NULL, dynamic_lights, &shots, &effects );
+						SetDynamicLights( obj, NULL, dynamic_lights, &shots, &effects );
 					/*
-					// NOTE: Commented-out because asteroid_shaders is only used when blastpoints are not being drawn.
+					// NOTE: Commented-out because deferred_shaders is only used when blastpoints are not being drawn.
 					if( blastpoints )
-						SetBlastPoints( blastpoints, &(asteroid->BlastPoints) );
+						SetBlastPoints( blastpoints, &(obj->BlastPoints) );
 					*/
 					
 					glPushMatrix();
-					asteroid->Draw();
+					obj->Draw();
 					glPopMatrix();
 				}
 			}
@@ -3880,7 +4063,7 @@ void RenderLayer::DrawScores( void )
 		if( (! objective) && (game->Data.PropertyAsString("gametype") != "mission") )
 		{
 			double rebel_score  = Raptor::Game->Data.PropertyAsInt("team_score_rebel");
-			double empire_score = Raptor::Game->Data.PropertyAsInt("team_score_rebel");
+			double empire_score = Raptor::Game->Data.PropertyAsInt("team_score_empire");
 			if( rebel_score >= empire_score )
 				empire_g = 0.37f;
 			if( empire_score >= rebel_score )

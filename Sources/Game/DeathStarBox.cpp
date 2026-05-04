@@ -18,17 +18,81 @@ DeathStarBox::DeathStarBox( uint32_t id ) : GameObject( id, XWing::Object::DEATH
 	W = 1.;
 	
 	Shape = NULL;
+	ShapeAllocated = false;
+	Plate = false;
+}
+
+
+DeathStarBox::DeathStarBox( const Pos3D &pos, double l, double h, double w ) : GameObject( 0, XWing::Object::DEATH_STAR_BOX )
+{
+	Copy( &pos );
+	L = l;
+	H = h;
+	W = w;
+	
+	Shape = NULL;
+	ShapeAllocated = false;
+	Plate = false;
 }
 
 
 DeathStarBox::~DeathStarBox()
 {
+	if( ShapeAllocated && Shape )
+		delete Shape;
+	Shape = NULL;
+	ShapeAllocated = false;
 }
 
 
 void DeathStarBox::ClientInit( void )
 {
-	Shape = Raptor::Game->Res.GetModel("deathstar_box.obj");
+	if( Plate )
+	{
+		const Model *plate_shape = Raptor::Game->Res.GetModel("deathstar_plate.obj");
+		if( plate_shape && plate_shape->Materials.size() )
+		{
+			Shape = new Model();
+			Shape->BecomeCopy( plate_shape );
+			ShapeAllocated = true;
+			
+			// Texture size is 500 on DeathStar, but we use 125 here and then scale by 0.25 to allow quarter-steps.
+			int tx_l = std::max<int>( 1, Num::NearestWhole( L / 125. ) + 0.5 );
+			int tx_w = std::max<int>( 1, Num::NearestWhole( W / 125. ) + 0.5 );
+			int tx_h = std::max<int>( 1, Num::NearestWhole( H / 125. ) + 0.5 );
+			
+			for( std::map<std::string,ModelMaterial*>::const_iterator mtl_iter = Shape->Materials.begin(); mtl_iter != Shape->Materials.end(); mtl_iter ++ )
+			{
+				for( size_t i = 0; i < mtl_iter->second->Arrays.VertexCount; i ++ )
+				{
+					float n_x = mtl_iter->second->Arrays.NormalArray[ i*3     ];
+					float n_y = mtl_iter->second->Arrays.NormalArray[ i*3 + 1 ];
+					float n_z = mtl_iter->second->Arrays.NormalArray[ i*3 + 2 ];
+					if( fabsf(n_y) > 0.7 )
+					{
+						// Face is pointing up or down.
+						mtl_iter->second->Arrays.TexCoordArray[ i*2     ] *= tx_w * 0.25;
+						mtl_iter->second->Arrays.TexCoordArray[ i*2 + 1 ] *= tx_l * 0.25;
+					}
+					else if( fabsf(n_z) > 0.7 )
+					{
+						// Face is pointing left or right.
+						mtl_iter->second->Arrays.TexCoordArray[ i*2     ] *= tx_h * 0.25; // NOTE: Deliberately swapped to match sideways textures in model.
+						mtl_iter->second->Arrays.TexCoordArray[ i*2 + 1 ] *= tx_l * 0.25; //
+					}
+					else if( fabsf(n_x) > 0.7 )
+					{
+						// Face is pointing front or back.
+						mtl_iter->second->Arrays.TexCoordArray[ i*2     ] *= tx_w * 0.25;
+						mtl_iter->second->Arrays.TexCoordArray[ i*2 + 1 ] *= tx_h * 0.25;
+					}
+				}
+			}
+		}
+	}
+	
+	if( ! Shape )
+		Shape = Raptor::Game->Res.GetModel("deathstar_box.obj");
 }
 
 
@@ -113,6 +177,8 @@ void DeathStarBox::ReadFromInitPacket( Packet *packet, int8_t precision )
 	L = packet->NextFloat();
 	H = packet->NextFloat();
 	W = packet->NextFloat();
+	
+	Plate = (L > 300.) || (H > 300.) || (W > 300.);
 }
 
 
@@ -198,13 +264,20 @@ void DeathStarBox::Update( double dt )
 
 void DeathStarBox::Draw( void )
 {
-	bool change_shaders = (Raptor::Game->Gfx.LightQuality >= 2) && Raptor::Game->ShaderMgr.Active();
+	if( ! Shape )
+		return;
+	
+	bool use_shaders = Raptor::Game->ShaderMgr.Active();
+	bool change_shaders = (Raptor::Game->Gfx.LightQuality >= 2) && use_shaders;
 	Shader *prev_shader = Raptor::Game->ShaderMgr.Selected;
 	if( change_shaders )
 		Raptor::Game->ShaderMgr.SelectAndCopyVars( Raptor::Game->Res.GetShader("deathstar") );
 	
-	if( Shape )
-		Shape->DrawAt( this, 1., L, H, W );
+	//glEnable( GL_CULL_FACE );
+	
+	Shape->DrawAt( this, 1., L, H, W );
+	
+	//glDisable( GL_CULL_FACE );
 	
 	if( change_shaders )
 		Raptor::Game->ShaderMgr.Select( prev_shader );

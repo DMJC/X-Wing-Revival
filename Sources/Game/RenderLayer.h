@@ -5,6 +5,7 @@
 #pragma once
 class RenderLayer;
 class Renderable;
+class DynamicLights;
 
 #include "PlatformSpecific.h"
 
@@ -25,6 +26,7 @@ class Renderable;
 #define STAR_COUNT 2000
 #define DEBRIS_COUNT 1000
 #define DEBRIS_DIST 120.
+#define MAX_DYNAMIC_LIGHTS 4
 
 
 class RenderLayer : public Layer
@@ -39,6 +41,7 @@ public:
 	TextBox *MessageInput;
 	Pos3D Cam;
 	Clock PlayTime;
+	std::map<Pos3D*,DynamicLights> DynamicLightCache;
 	
 	RenderLayer( void );
 	virtual ~RenderLayer();
@@ -67,6 +70,7 @@ public:
 	bool KeyDown( SDLKey key );
 };
 
+
 class Renderable
 {
 public:
@@ -83,4 +87,13 @@ public:
 	Renderable( Effect *effect );
 	Renderable( ShipEngine *engine, const Pos3D *pos, float alpha, double scale = 1. );
 	~Renderable();
+};
+
+
+class DynamicLights
+{
+public:
+	int Count;
+	Vec3D Position[ MAX_DYNAMIC_LIGHTS ];
+	Color LightColor[ MAX_DYNAMIC_LIGHTS ];
 };

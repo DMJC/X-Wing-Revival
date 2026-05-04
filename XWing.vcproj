@@ -1160,6 +1160,14 @@
 					>
 				</File>
 				<File
+					RelativePath=".\Sources\Game\Obstacle.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\Sources\Game\Obstacle.h"
+					>
+				</File>
+				<File
 					RelativePath=".\Sources\Game\RenderLayer.cpp"
 					>
 				</File>

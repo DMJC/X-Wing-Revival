@@ -34,6 +34,7 @@ ShipClass::ShipClass( uint32_t id ) : GameObject( id, XWing::Object::SHIP_CLASS 
 	ShieldRechargeDelay = 5.;
 	ShieldRechargeRate = 0.;
 	ExplosionRate = 1.;
+	ExplosionStagger = 0.5;
 	TurretHealth = 95.;
 	TurretYawSpeed = TurretPitchSpeed = 45.;
 	TurretBody = "turret_body.obj";
@@ -86,6 +87,7 @@ ShipClass::ShipClass( const ShipClass &other ) : GameObject( 0, XWing::Object::S
 	ShieldRechargeDelay = other.ShieldRechargeDelay;
 	ShieldRechargeRate = other.ShieldRechargeRate;
 	ExplosionRate = other.ExplosionRate;
+	ExplosionStagger = other.ExplosionStagger;
 	Subsystems = other.Subsystems;
 	Weapons = other.Weapons;
 	FireTime = other.FireTime;

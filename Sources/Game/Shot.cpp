@@ -291,9 +291,9 @@ double Shot::AsteroidDamage( void ) const
 double Shot::Speed( void ) const
 {
 	if( ShotType == TYPE_TURBO_LASER_GREEN )
-		return 700.;
+		return 750.;
 	else if( ShotType == TYPE_TURBO_LASER_RED )
-		return 700.;
+		return 750.;
 	else if( ShotType == TYPE_QUAD_LASER_RED )
 		return 750.;
 	else if( ShotType == TYPE_ION_CANNON )
@@ -343,6 +343,8 @@ double Shot::MaxLifetime( void ) const
 		return 15.;
 	else if( ShotType == TYPE_MISSILE )
 		return 10.;
+	else if( ShotType == TYPE_SUPERLASER )
+		return 4.;
 	
 	return 2.;
 }
@@ -1000,14 +1002,16 @@ double Shot::DrawBehind( void ) const
 {
 	double behind = 30.;
 	
-	if( (ShotType == TYPE_TURBO_LASER_GREEN) || (ShotType == TYPE_TURBO_LASER_RED) )
-		behind = 50.;
+	if( ShotType == TYPE_TURBO_LASER_GREEN )
+		behind = 70.;
+	else if( ShotType == TYPE_TURBO_LASER_RED )
+		behind = 60.;
 	else if( ShotType == TYPE_ION_CANNON )
 		behind = 40.;
 	else if( ShotType == TYPE_TORPEDO )
 		behind = 100.;
 	else if( ShotType == TYPE_MISSILE )
-		behind = 25.;
+		behind = 65.;
 	else if( ShotType == TYPE_SUPERLASER )
 		behind = Speed() * 1.5;
 	
@@ -1029,7 +1033,9 @@ double Shot::DrawWidth( void ) const
 	
 	double lifetime = Drawn ? Lifetime.ElapsedSeconds() : 0.;
 	
-	if( (ShotType == TYPE_TURBO_LASER_GREEN) || (ShotType == TYPE_TURBO_LASER_RED) )
+	if( ShotType == TYPE_TURBO_LASER_GREEN )
+		return std::max<double>( 2. - lifetime, 1.25 );
+	else if( ShotType == TYPE_TURBO_LASER_RED )
 		return std::max<double>( 2. - lifetime, 1.5 );
 	else if( ShotType == TYPE_LASER_GREEN )
 		return std::min<double>( 0.5 + lifetime, 1. );

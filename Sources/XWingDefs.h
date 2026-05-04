@@ -60,6 +60,7 @@ namespace XWing
 			SHOT = 'Shot',
 			SHOT_MISSILE = 'Misl',
 			ASTEROID = 'Rock',
+			OBSTACLE = 'Tube',
 			TURRET = 'Turr',
 			DEATH_STAR = 'Moon',
 			DEATH_STAR_BOX = 'aBox',
@@ -101,7 +102,6 @@ namespace XWing
 	{
 		enum
 		{
-			ZERO_LAG = '0Lag'  // FIXME: Needed for v0.4.x but ignored in v0.5+ which always supports ZeroLag shots.
 		};
 	}
 	

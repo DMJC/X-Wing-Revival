@@ -285,6 +285,8 @@ void DeathStar::Draw( void )
 	center.MoveAlong( &Fwd, cam_fwd );
 	
 	int trench_detail = Raptor::Game->Cfg.SettingAsInt( "g_deathstar_trench", 4 );
+	if( (TrenchWidth >= 1000.) || (TrenchDepth >= 1000.) )  // Battle of Endor's massive trench should not draw details.
+		trench_detail = 0;
 	if( trench_detail && ( Raptor::Game->Cam.Dist(&center) < Raptor::Game->Cfg.SettingAsDouble( "g_deathstar_trench_dist", 1000. ) ) )
 	{
 		double sign = Num::Sign( Raptor::Game->Cam.Fwd.Dot(&Fwd) );
@@ -441,10 +443,10 @@ void DeathStar::Draw( void )
 	
 	int tx_width = Num::NearestWhole( TrenchWidth / TextureSize ) + 0.5;
 	if( tx_width < 1 )
-		tx_width = 1.;
+		tx_width = 1;
 	int tx_depth = Num::NearestWhole( TrenchDepth / TextureSize ) + 0.5;
 	if( tx_depth < 1 )
-		tx_depth = 1.;
+		tx_depth = 1;
 	
 	glBegin( GL_QUADS );
 		

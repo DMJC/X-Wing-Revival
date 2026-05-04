@@ -17,11 +17,13 @@ class DeathStarBox;
 class DeathStarBox : public GameObject
 {
 public:
-	double L,H,W;
+	double L, H, W;
 	Model *Shape;
+	bool ShapeAllocated, Plate;
 	
 	
 	DeathStarBox( uint32_t id = 0 );
+	DeathStarBox( const Pos3D &pos, double l, double h, double w );
 	virtual ~DeathStarBox();
 	
 	void ClientInit( void );

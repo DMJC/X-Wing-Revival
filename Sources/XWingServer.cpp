@@ -22,6 +22,7 @@
 #include "DeathStarBox.h"
 #include "DockingBay.h"
 #include "Checkpoint.h"
+#include "Obstacle.h"
 #include "Math3D.h"
 #include "RaptorGame.h"
 
@@ -78,6 +79,12 @@ std::map<std::string,std::string> XWingServer::DefaultProperties( void ) const
 	defaults["yavin_rebel_fighter"]  = "X/W";
 	defaults["yavin_rebel_bomber"]   = "Y/W";
 	defaults["yavin_empire_fighter"] = "T/F";
+	defaults["endor_superlaser_time"] = "45";
+	defaults["endor_turrets"] = "40";
+	defaults["endor_exit_time"] = "55";
+	defaults["endor_safe_time"] = "40";
+	defaults["endor_rebel_fleet"] = "15";
+	defaults["endor_empire_fleet"] = "7";
 	defaults["ai_empire_ratio"] = "1";
 	defaults["respawn"] = "true";
 	defaults["respawn_time"] = "";
@@ -650,8 +657,7 @@ bool XWingServer::ProcessPacket( Packet *packet, ConnectedClient *from_client )
 					lobby_packet.AddString( mission_iter->first );
 					lobby_packet.AddString( mission_iter->second.PropertyAsString( "mission_name", mission_iter->first ) );
 				}
-				lobby_packet.AddUChar( 1 );
-				lobby_packet.AddUInt( XWing::ServerFeature::ZERO_LAG );  // FIXME: For v0.4.x, probably not needed anymore.
+				lobby_packet.AddUChar( 0 );  // XWing::ServerFeature count.
 				Net.SendAll( &lobby_packet );
 			}
 			
@@ -703,8 +709,7 @@ void XWingServer::AcceptedClient( ConnectedClient *client )
 		lobby_packet.AddString( mission_iter->first );
 		lobby_packet.AddString( mission_iter->second.Properties["mission_name"] );
 	}
-	lobby_packet.AddUChar( 1 );
-	lobby_packet.AddUInt( XWing::ServerFeature::ZERO_LAG );  // FIXME: For v0.4.x, probably not needed anymore.
+	lobby_packet.AddUChar( 0 );  // XWing::ServerFeature count.
 	client->Send( &lobby_packet );
 }
 
@@ -747,6 +752,8 @@ void XWingServer::Update( double dt )
 	if( (Data.TimeScale == 1.) || ((Data.TimeScale < 0.01) && (num_players == 1)) )
 		RoundEndedTimer.SetTimeScale( Data.TimeScale );
 	
+	bool sv_debug = Data.PropertyAsBool("debug");
+	
 	if( State >= XWing::State::FLYING )
 	{
 		// ======
@@ -769,13 +776,14 @@ void XWingServer::Update( double dt )
 		AllowTeamChange = Data.PropertyAsBool("allow_team_change",false);
 		
 		
-		// Build a list of all ships.
+		// Build lists of ships, shots, and other useful object subsets.
 		
 		std::map<uint32_t,Ship*> ships;
-		std::list<Shot*> shots;
+		std::vector<Shot*> shots, missiles;
 		std::map<uint32_t,Turret*> turrets;
 		std::map<uint32_t,Asteroid*> asteroids;
-		Ship *rebel_flagship = NULL, *empire_flagship = NULL, *exhaust_port = NULL;
+		std::vector<Obstacle*> obstacles;
+		Ship *rebel_flagship = NULL, *empire_flagship = NULL, *exhaust_port = NULL, *reactor = NULL;
 		DeathStar *deathstar = NULL;
 		std::set<Ship*> respawn_waiting;
 		
@@ -804,14 +812,26 @@ void XWingServer::Update( double dt )
 						empire_flagship = ship;
 				}
 				if( ship->Category() == ShipClass::CATEGORY_TARGET )
-					exhaust_port = ship;
+				{
+					if( GameType == XWing::GameType::BATTLE_OF_YAVIN )
+						exhaust_port = ship;
+					else if( GameType == XWing::GameType::BATTLE_OF_ENDOR )
+						reactor = ship;
+				}
 			}
 			else if( obj_iter->second->Type() == XWing::Object::SHOT )
-				shots.push_back( (Shot*) obj_iter->second );
+			{
+				Shot *shot = (Shot*) obj_iter->second;
+				shots.push_back( shot );
+				if( shot->CollisionType() == XWing::Object::SHOT_MISSILE )
+					missiles.push_back( shot );
+			}
 			else if( obj_iter->second->Type() == XWing::Object::TURRET )
 				turrets[ obj_iter->second->ID ] = (Turret*) obj_iter->second;
 			else if( obj_iter->second->Type() == XWing::Object::ASTEROID )
 				asteroids[ obj_iter->second->ID ] = (Asteroid*) obj_iter->second;
+			else if( obj_iter->second->Type() == XWing::Object::OBSTACLE )
+				obstacles.push_back( (Obstacle*) obj_iter->second );
 			else if( obj_iter->second->Type() == XWing::Object::DEATH_STAR )
 				deathstar = (DeathStar*) obj_iter->second;
 		}
@@ -837,7 +857,7 @@ void XWingServer::Update( double dt )
 				char punctuation = '.';
 				
 				#define SLOW_SPEED (100.)
-				#define SLOW_DAMAGE (0.04)
+				#define SLOW_DAMAGE (0.03)
 				
 				if( prev_health1 > 0. )
 				{
@@ -852,8 +872,8 @@ void XWingServer::Update( double dt )
 						double relative_speed = (ship1->MotionVector - ship2->MotionVector).Length();
 						if( relative_speed < SLOW_SPEED )
 						{
-							// Repeat collision check at 4Hz.
-							if( (ship1->HitClock.ElapsedSeconds() < 0.25) && (ship2->HitClock.ElapsedSeconds() < 0.25) )
+							// Repeat collision check at 5Hz.
+							if( (ship1->HitClock.ElapsedSeconds() < 0.2) && (ship2->HitClock.ElapsedSeconds() < 0.2) )
 								continue;
 							
 							collision_damage = std::max<double>( SLOW_DAMAGE, (relative_speed / SLOW_SPEED) ) * std::min<double>( ship1->CollisionPotential, ship2->CollisionPotential );
@@ -880,6 +900,9 @@ void XWingServer::Update( double dt )
 						}
 						else
 							ship1->AddDamage( collision_damage / 2., collision_damage / 2. );
+						
+						if( ship1->Category() != ShipClass::CATEGORY_CAPITAL )
+							ship1->HitFlags |= Ship::HIT_SPLATTER;
 					}
 					else
 					{
@@ -888,6 +911,9 @@ void XWingServer::Update( double dt )
 							ship1->AddDamage( collision_damage, 0. );
 						else
 							ship1->AddDamage( 0., collision_damage );
+						
+						if( ship1->Category() != ShipClass::CATEGORY_CAPITAL )
+							ship1->HitFlags |= Ship::HIT_SPLATTER;
 					}
 					
 					if( (subsystem_iter != ship1->Subsystems.end()) && (subsystem_iter->second <= 0.) )
@@ -991,7 +1017,7 @@ void XWingServer::Update( double dt )
 							hit.AddDouble( ship2->PrevPos.Y );
 							hit.AddDouble( ship2->PrevPos.Z );
 						}
-						hit.AddDouble( sqrt( ship2->Radius() ) * 4. * collision_damage / ship2->CollisionPotential );
+						hit.AddDouble( sqrt( ship2->Radius() ) * 4. * collision_damage / ship2->CollisionPotential );  // Blastpoint radius.
 						Net.SendAll( &hit );
 					}
 				}
@@ -1033,6 +1059,9 @@ void XWingServer::Update( double dt )
 						}
 						else
 							ship2->AddDamage( collision_damage / 2., collision_damage / 2. );
+						
+						if( ship2->Category() != ShipClass::CATEGORY_CAPITAL )
+							ship2->HitFlags |= Ship::HIT_SPLATTER;
 					}
 					else
 					{
@@ -1041,6 +1070,9 @@ void XWingServer::Update( double dt )
 							ship2->AddDamage( collision_damage, 0. );
 						else
 							ship2->AddDamage( 0., collision_damage );
+						
+						if( ship2->Category() != ShipClass::CATEGORY_CAPITAL )
+							ship2->HitFlags |= Ship::HIT_SPLATTER;
 					}
 					
 					if( (subsystem_iter != ship2->Subsystems.end()) && (subsystem_iter->second <= 0.) )
@@ -1144,7 +1176,7 @@ void XWingServer::Update( double dt )
 							hit.AddDouble( ship1->PrevPos.Y );
 							hit.AddDouble( ship1->PrevPos.Z );
 						}
-						hit.AddDouble( sqrt( ship1->Radius() ) * 4. * collision_damage / ship1->CollisionPotential );
+						hit.AddDouble( sqrt( ship1->Radius() ) * 4. * collision_damage / ship1->CollisionPotential );  // Blastpoint radius.
 						Net.SendAll( &hit );
 					}
 				}
@@ -1179,8 +1211,8 @@ void XWingServer::Update( double dt )
 					message.AddString( cstr );
 					Net.SendAll( &message );
 				}
-				
-				if( Data.PropertyAsBool("debug") )
+				/*
+				if( sv_debug )
 				{
 					if( collision_iter->FirstObject.length() )
 					{
@@ -1200,6 +1232,7 @@ void XWingServer::Update( double dt )
 						Net.SendAll( &message );
 					}
 				}
+				*/
 			}
 			
 			else if( ((collision_iter->first->Type() == XWing::Object::SHIP) && (collision_iter->second->Type() == XWing::Object::SHOT))
@@ -1209,15 +1242,18 @@ void XWingServer::Update( double dt )
 				
 				Ship *ship = NULL;
 				Shot *shot = NULL;
+				std::string object_hit;
 				if( collision_iter->first->Type() == XWing::Object::SHIP )
 				{
 					ship = (Ship*) collision_iter->first;
 					shot = (Shot*) collision_iter->second;
+					object_hit = collision_iter->FirstObject;
 				}
 				else
 				{
 					ship = (Ship*) collision_iter->second;
 					shot = (Shot*) collision_iter->first;
+					object_hit = collision_iter->SecondObject;
 				}
 				
 				/*
@@ -1229,11 +1265,11 @@ void XWingServer::Update( double dt )
 				double prev_health = ship->Health;
 				bool subsystem_was_intact = false;
 				
-				if( collision_iter->FirstObject.length() )
+				if( object_hit.length() )
 				{
-					std::map<std::string,double>::const_iterator subsystem_iter = ship->Subsystems.find( collision_iter->FirstObject );
+					std::map<std::string,double>::const_iterator subsystem_iter = ship->Subsystems.find( object_hit );
 					subsystem_was_intact = (subsystem_iter != ship->Subsystems.end()) && (subsystem_iter->second > 0.);
-					ship->AddDamage( shot->Damage() / 2., shot->Damage() / 2., collision_iter->FirstObject.c_str(), shot->FiredFrom, shot->HullDamage() );
+					ship->AddDamage( shot->Damage() / 2., shot->Damage() / 2., object_hit.c_str(), shot->FiredFrom, shot->HullDamage() );
 				}
 				else
 				{
@@ -1244,9 +1280,12 @@ void XWingServer::Update( double dt )
 						ship->AddDamage( 0., shot->Damage(), NULL, shot->FiredFrom, shot->HullDamage() );
 				}
 				
+				if( (shot->ShotType == Shot::TYPE_ION_CANNON) && (ship->HitFlags & Ship::HIT_HULL) && ! subsystem_was_intact )
+					ship->HitFlags |= Ship::HIT_ION;
+				
 				if( prev_health > 0. )
 				{
-					std::map<std::string,double>::const_iterator subsystem_iter = ship->Subsystems.find( collision_iter->FirstObject );
+					std::map<std::string,double>::const_iterator subsystem_iter = ship->Subsystems.find( object_hit );
 					
 					// Send the hit.
 					Packet shot_hit( XWing::Packet::SHOT_HIT_SHIP );
@@ -1341,7 +1380,7 @@ void XWingServer::Update( double dt )
 					}
 				}
 				
-				if( (shot->ShotType != Shot::TYPE_SUPERLASER) || ! Data.PropertyAsBool("superlaser_penetrate",true) )
+				if( (shot->ShotType != Shot::TYPE_SUPERLASER) || ! Data.PropertyAsBool( "superlaser_penetrate", (ship->Category() != ShipClass::CATEGORY_CAPITAL) ) )
 					remove_object_ids.insert( shot->ID );
 				
 				// This ship just died.
@@ -1400,6 +1439,8 @@ void XWingServer::Update( double dt )
 							snprintf( cstr, 1024, "%s bullseyed themself%c", victim_name, punctuation );
 						else if( killer || killer_ship )
 							snprintf( cstr, 1024, "%s was destroyed by %s%c", victim_name, killer ? killer->Name.c_str() : (killer_ship ? killer_ship->Name.c_str() : "somebody"), punctuation );
+						else if( killer_turret && (killer_turret->Weapon == Shot::TYPE_SUPERLASER) )
+							snprintf( cstr, 1024, "%s was destroyed by the Death Star%c", victim_name, punctuation );
 						else if( killer_turret )
 							snprintf( cstr, 1024, "%s was destroyed by a turret%c", victim_name, punctuation );
 						else
@@ -1676,6 +1717,9 @@ void XWingServer::Update( double dt )
 				double prev_health = ship->Health;
 				ship->SetHealth( 0. );
 				
+				if( ship->Category() != ShipClass::CATEGORY_CAPITAL )
+					ship->HitFlags |= Ship::HIT_SPLATTER;
+				
 				// This ship just died.  // FIXME: At low speed use MISC_HIT_SHIP to apply damage instead of instant death!
 				if( prev_health > 0. )
 				{
@@ -1720,8 +1764,8 @@ void XWingServer::Update( double dt )
 					}
 					Net.SendAll( &explosion );
 					
-					// Add blastpoint to asteroid.
-					if( hazard->Type() == XWing::Object::ASTEROID )
+					// Add blastpoint to asteroid/obstacle.
+					if( (hazard->Type() == XWing::Object::ASTEROID) || (hazard->Type() == XWing::Object::OBSTACLE) )
 					{
 						Packet shot_hit( XWing::Packet::SHOT_HIT_HAZARD ); // FIXME: Should this be its own packet type?
 						shot_hit.AddUChar( Shot::TYPE_TORPEDO );
@@ -1743,6 +1787,8 @@ void XWingServer::Update( double dt )
 						const char *hazard_name = "something";
 						if( hazard->Type() == XWing::Object::ASTEROID )
 							hazard_name = "an asteroid";
+						else if( hazard->Type() == XWing::Object::OBSTACLE )
+							hazard_name = ((Obstacle*)hazard)->CollisionName.c_str();
 						else if( (hazard->Type() == XWing::Object::DEATH_STAR) || (hazard->Type() == XWing::Object::DEATH_STAR_BOX) )
 							hazard_name = "the Death Star";
 						snprintf( cstr, 1024, "%s ran into %s%c", victim ? victim->Name.c_str() : ship->Name.c_str(), hazard_name, (ship->IsMissionObjective || (ship->Group == 255)) ? '!' : '.' );
@@ -1759,39 +1805,45 @@ void XWingServer::Update( double dt )
 				Shot *shot1 = (Shot*) collision_iter->first;
 				Shot *shot2 = (Shot*) collision_iter->second;
 				
-				remove_object_ids.insert( shot1->ID );
-				remove_object_ids.insert( shot2->ID );
-				
-				// Show explosion(s) to players.
-				if( shot1->CollisionType() == XWing::Object::SHOT_MISSILE )
+				// Don't let AI ships accidentally shoot down their own missiles with lasers.
+				// NOTE: This check is here instead of in WillCollide so AI can still use that to determine dodging_for_shot.
+				bool ai_mistake = shot1->FiredFrom && (shot1->FiredFrom == shot2->FiredFrom) && ((shot1->CollisionType() == XWing::Object::SHOT) || (shot2->CollisionType() == XWing::Object::SHOT)) && ! (shot1->PlayerID || shot2->PlayerID);
+				if( ! ai_mistake )
 				{
-					Packet explosion( XWing::Packet::EXPLOSION );
-					explosion.AddDouble( shot1->X );
-					explosion.AddDouble( shot1->Y );
-					explosion.AddDouble( shot1->Z );
-					explosion.AddFloat( shot1->MotionVector.X );
-					explosion.AddFloat( shot1->MotionVector.Y );
-					explosion.AddFloat( shot1->MotionVector.Z );
-					explosion.AddFloat( 20. ); // Radius
-					explosion.AddFloat( 2.5 ); // Loudness
-					explosion.AddUChar( 0 );   // Sub-Explosions
-					explosion.AddFloat( (shot1->ShotType == Shot::TYPE_TORPEDO) ? 1.5 : 2.5 ); // Speed Scale
-					Net.SendAll( &explosion );
-				}
-				if( shot2->CollisionType() == XWing::Object::SHOT_MISSILE )
-				{
-					Packet explosion( XWing::Packet::EXPLOSION );
-					explosion.AddDouble( shot2->X );
-					explosion.AddDouble( shot2->Y );
-					explosion.AddDouble( shot2->Z );
-					explosion.AddFloat( shot2->MotionVector.X );
-					explosion.AddFloat( shot2->MotionVector.Y );
-					explosion.AddFloat( shot2->MotionVector.Z );
-					explosion.AddFloat( 20. ); // Radius
-					explosion.AddFloat( 2.5 ); // Loudness
-					explosion.AddUChar( 0 );   // Sub-Explosions
-					explosion.AddFloat( (shot2->ShotType == Shot::TYPE_TORPEDO) ? 1.5 : 2.5 ); // Speed Scale
-					Net.SendAll( &explosion );
+					remove_object_ids.insert( shot1->ID );
+					remove_object_ids.insert( shot2->ID );
+					
+					// Show explosion(s) to players.
+					if( shot1->CollisionType() == XWing::Object::SHOT_MISSILE )
+					{
+						Packet explosion( XWing::Packet::EXPLOSION );
+						explosion.AddDouble( shot1->X );
+						explosion.AddDouble( shot1->Y );
+						explosion.AddDouble( shot1->Z );
+						explosion.AddFloat( shot1->MotionVector.X );
+						explosion.AddFloat( shot1->MotionVector.Y );
+						explosion.AddFloat( shot1->MotionVector.Z );
+						explosion.AddFloat( 20. ); // Radius
+						explosion.AddFloat( 2.5 ); // Loudness
+						explosion.AddUChar( 0 );   // Sub-Explosions
+						explosion.AddFloat( (shot1->ShotType == Shot::TYPE_TORPEDO) ? 1.5 : 2.5 ); // Speed Scale
+						Net.SendAll( &explosion );
+					}
+					if( shot2->CollisionType() == XWing::Object::SHOT_MISSILE )
+					{
+						Packet explosion( XWing::Packet::EXPLOSION );
+						explosion.AddDouble( shot2->X );
+						explosion.AddDouble( shot2->Y );
+						explosion.AddDouble( shot2->Z );
+						explosion.AddFloat( shot2->MotionVector.X );
+						explosion.AddFloat( shot2->MotionVector.Y );
+						explosion.AddFloat( shot2->MotionVector.Z );
+						explosion.AddFloat( 20. ); // Radius
+						explosion.AddFloat( 2.5 ); // Loudness
+						explosion.AddUChar( 0 );   // Sub-Explosions
+						explosion.AddFloat( (shot2->ShotType == Shot::TYPE_TORPEDO) ? 1.5 : 2.5 ); // Speed Scale
+						Net.SendAll( &explosion );
+					}
 				}
 			}
 			
@@ -1821,13 +1873,24 @@ void XWingServer::Update( double dt )
 				if( (shot->ShotType != Shot::TYPE_SUPERLASER) || ! Data.PropertyAsBool("superlaser_penetrate",true) )
 					remove_object_ids.insert( shot->ID );
 				
-				if( (shot->ShotType == Shot::TYPE_TORPEDO) || (shot->ShotType == Shot::TYPE_MISSILE) || ((hazard->Type() == XWing::Object::ASTEROID) && shot->AsteroidDamage()) )
+				if( (shot->ShotType == Shot::TYPE_TORPEDO) || (shot->ShotType == Shot::TYPE_MISSILE)
+				|| ((hazard->Type() == XWing::Object::ASTEROID) && shot->AsteroidDamage())
+				||  (hazard->Type() == XWing::Object::OBSTACLE) )
 				{
 					Packet shot_hit( XWing::Packet::SHOT_HIT_HAZARD );
 					shot_hit.AddUChar( shot->ShotType );
-					shot_hit.AddDouble( shot->PrevPos.X );
-					shot_hit.AddDouble( shot->PrevPos.Y );
-					shot_hit.AddDouble( shot->PrevPos.Z );
+					if( (hazard->Type() != XWing::Object::ASTEROID) && (collision_iter->Location.X || collision_iter->Location.Y || collision_iter->Location.Z) )
+					{
+						shot_hit.AddDouble( collision_iter->Location.X );
+						shot_hit.AddDouble( collision_iter->Location.Y );
+						shot_hit.AddDouble( collision_iter->Location.Z );
+					}
+					else
+					{
+						shot_hit.AddDouble( shot->PrevPos.X );
+						shot_hit.AddDouble( shot->PrevPos.Y );
+						shot_hit.AddDouble( shot->PrevPos.Z );
+					}
 					shot_hit.AddUInt( hazard->ID );
 					Net.SendAll( &shot_hit );
 				}
@@ -1863,6 +1926,7 @@ void XWingServer::Update( double dt )
 							&&  (asteroid_iter->second->Dist( asteroid ) < (asteroid->Radius + asteroid_iter->second->Radius)) )
 							{
 								bool spin = true;
+								
 								std::map<uint32_t,Asteroid*>::iterator asteroid_iter2 = asteroid_iter;
 								asteroid_iter2 ++;
 								for( ; asteroid_iter2 != asteroids.end(); asteroid_iter2 ++ )
@@ -1875,10 +1939,25 @@ void XWingServer::Update( double dt )
 										break;
 									}
 								}
+								
+								if( spin )
+								{
+									// Touching an obstacle also prevents asteroid rotation.
+									for( std::vector<Obstacle*>::const_iterator obstacle_iter = obstacles.begin(); obstacle_iter != obstacles.end(); obstacle_iter ++ )
+									{
+										if( (*obstacle_iter)->WillCollide( asteroid_iter->second, 0. ) )
+										{
+											spin = false;
+											break;
+										}
+									}
+								}
+								
 								if( spin )
 									spin_asteroids.insert( asteroid_iter->second );
 							}
 						}
+						
 						if( spin_asteroids.size() )
 						{
 							Packet update_packet( Raptor::Packet::UPDATE );
@@ -1914,6 +1993,7 @@ void XWingServer::Update( double dt )
 		size_t rebel_players = 0, empire_players = 0;
 		size_t rebel_players_in_trench = 0;
 		size_t player_ships_without_group = 0;
+		size_t rebels_in_trench = 0;
 		bool ffa = (GameType == XWing::GameType::FFA_DEATHMATCH) || (GameType == XWing::GameType::FFA_ELIMINATION) || (GameType == XWing::GameType::FFA_RACE);
 		for( std::map<uint32_t,Ship*>::iterator ship_iter = ships.begin(); ship_iter != ships.end(); ship_iter ++ )
 		{
@@ -1933,7 +2013,10 @@ void XWingServer::Update( double dt )
 				{
 					rebel_players ++;
 					if( deathstar && deathstar->WithinTrenchW(ship_iter->second) && deathstar->WithinTrenchH(ship_iter->second) )
+					{
 						rebel_players_in_trench ++;
+						rebels_in_trench ++;
+					}
 				}
 				else if( ship_iter->second->Team == XWing::Team::EMPIRE )
 					empire_players ++;
@@ -1954,6 +2037,8 @@ void XWingServer::Update( double dt )
 						RespawnClocks.erase( clock_iter );
 				}
 			}
+			else if( (ship_iter->second->Team == XWing::Team::REBEL) && deathstar && deathstar->WithinTrenchW(ship_iter->second) && deathstar->WithinTrenchH(ship_iter->second) )
+				rebels_in_trench ++;
 		}
 		
 		
@@ -2277,6 +2362,7 @@ void XWingServer::Update( double dt )
 				{
 					// Build a list of all the things this AI ship might want to target.
 					std::vector<GameObject*> potential_targets;
+					bool within_trench = deathstar && deathstar->WithinTrenchH( ship );
 					
 					if( (ship->WeaponCount(Shot::TYPE_LASER_RED) || ship->WeaponCount(Shot::TYPE_LASER_GREEN))
 					&&  (ship->Category() != ShipClass::CATEGORY_TRANSPORT) && (ship->Category() != ShipClass::CATEGORY_CAPITAL) )
@@ -2361,26 +2447,58 @@ void XWingServer::Update( double dt )
 							if( ai_pudu && potential_target->Owner() )
 								continue;
 							
-							// Don't attack the exhaust port when out of torpedos.
-							if( (GameType == XWing::GameType::BATTLE_OF_YAVIN) && potential_target->IsMissionObjective && ! ship->AmmoForWeapon(Shot::TYPE_TORPEDO) )
+							// Rebel ships should not got chasing distant TIEs on Battle of Yavin.
+							if( (GameType == XWing::GameType::BATTLE_OF_YAVIN) && deathstar && (ship->Team == XWing::Team::REBEL) && (potential_target->DistAlong( &(deathstar->Fwd), ship ) < -3000.) )
 								continue;
 							
-							// Rebel ships should not got chasing distant TIEs on Battle of Yavin.
-							if( deathstar && (ship->Team == XWing::Team::REBEL) && (potential_target->DistAlong( &(deathstar->Fwd), ship ) < -3000.) )
+							// Don't attack the exhaust port when out of torpedos.
+							if( (potential_target == exhaust_port) && ! ship->AmmoForWeapon(Shot::TYPE_TORPEDO) )
+								continue;
+							
+							// Don't try to attack the Death Star II reactor from above.
+							if( (potential_target == reactor) && (ship->DistAlong( &(potential_target->Up), potential_target ) > 1000.) )
+								continue;
+							
+							// Don't try to chase targets through the walls of the Death Star II reactor room.
+							if( reactor && (ship->Dist(reactor) < 2500.) && (potential_target->Dist(reactor) > 2500.) )
+								continue;
+							
+							// Fighters inside the Death Star II tunnels should not target capital ships.
+							if( within_trench && (potential_target->Category() == ShipClass::CATEGORY_CAPITAL) )
+								continue;
+							
+							// Capital ships should not chase fighters into the trench or tunnels.
+							if( (ship->Category() == ShipClass::CATEGORY_CAPITAL) && deathstar && deathstar->WithinTrenchH(potential_target) )
 								continue;
 							
 							potential_targets.push_back( potential_target );
 						}
 					}
 					
+					// Capital ships in the Battle of Endor should only go after each other.
+					if( (GameType == XWing::GameType::BATTLE_OF_ENDOR) && (ship->Category() == ShipClass::CATEGORY_CAPITAL) )
+					{
+						std::vector<GameObject*> primary_targets;
+						for( std::vector<GameObject*>::iterator target_iter = potential_targets.begin(); target_iter != potential_targets.end(); target_iter ++ )
+						{
+							if( (*target_iter)->Type() == XWing::Object::SHIP )
+							{
+								const Ship *potential_ship = (const Ship*) *target_iter;
+								if( potential_ship->Category() == ShipClass::CATEGORY_CAPITAL )
+									primary_targets.push_back( *target_iter );
+							}
+						}
+						if( primary_targets.size() )
+							potential_targets = primary_targets;
+					}
+					
 					// If we're running the trench, filter out any targets outside it or behind us.
-					bool in_trench = deathstar && deathstar->WithinTrenchH( ship );
-					if( in_trench )
+					if( within_trench )
 					{
 						std::vector<GameObject*> trench_targets;
 						for( std::vector<GameObject*>::iterator target_iter = potential_targets.begin(); target_iter != potential_targets.end(); target_iter ++ )
 						{
-							if( ((*target_iter)->DistAlong( &(ship->Fwd), ship ) > 0.) && deathstar->WithinTrenchW(*target_iter) )
+							if( (((*target_iter)->DistAlong( &(ship->Fwd), ship ) > 0.) || (*target_iter == reactor)) && deathstar->WithinTrenchW(*target_iter) )
 								trench_targets.push_back( *target_iter );
 						}
 						potential_targets = trench_targets;
@@ -2434,7 +2552,7 @@ void XWingServer::Update( double dt )
 					}
 					
 					// Don't chase the squirrels.
-					if( GameType != XWing::GameType::BATTLE_OF_YAVIN )
+					if( (GameType != XWing::GameType::BATTLE_OF_YAVIN) && (GameType != XWing::GameType::BATTLE_OF_ENDOR) )
 					{
 						std::vector<GameObject*> not_squirrels;
 						double ship_center_dist = sqrt( ship->X * ship->X + ship->Y * ship->Y + ship->Z * ship->Z );
@@ -2455,7 +2573,7 @@ void XWingServer::Update( double dt )
 					for( std::vector<GameObject*>::iterator target_iter = potential_targets.begin(); target_iter != potential_targets.end(); target_iter ++ )
 					{
 						double dist = (*target_iter)->Dist( ship );
-						if( (dist < 2000.) && (in_trench == (deathstar && deathstar->WithinTrenchH(*target_iter))) )
+						if( (dist < 2000.) && (within_trench == (deathstar && deathstar->WithinTrenchH(*target_iter))) )
 							close_targets.push_back( *target_iter );
 						
 						if( (*target_iter)->Type() == XWing::Object::SHIP )
@@ -2609,7 +2727,7 @@ void XWingServer::Update( double dt )
 					&&  ( (! target_ship->IsMissionObjective)
 					   || (! Respawn)
 					   || (ai_jedi && ! players_on_team)
-					   || (fmod( ship->DeathClock.ElapsedSeconds(), 15. ) < (players_on_team ? (9. - ai_skill * 2.) : (3. + ai_skill * 3.))) ))
+					   || ((target != reactor) && (fmod( ship->DeathClock.ElapsedSeconds(), 15. ) < (players_on_team ? (9. - ai_skill * 2.) : (3. + ai_skill * 3.))) )) )
 					{
 						// Look for shield generators and attack those first.
 						uint8_t subsystem_num = 1;
@@ -2631,7 +2749,7 @@ void XWingServer::Update( double dt )
 							subsystem_num ++;
 						}
 						
-						// After the shield generators are gone, Jedi AI with no players on their team attack critical subsystems (Star Destroyer bridge).
+						// After the shield generators are gone, Jedi AI with no players on their team attack critical subsystems (Star Destroyer bridge, Death Star reactor core).
 						if( (! target_subsystem) && ((ai_jedi && ! players_on_team) || ! target_ship->IsMissionObjective) )
 						{
 							subsystem_num = 1;
@@ -2656,7 +2774,7 @@ void XWingServer::Update( double dt )
 					}
 					
 					// If a ship's origin is in empty space (ex: Star Destroyer) the model object Hull defines the point to aim at.
-					if( target_ship && (! target_subsystem) && (target_ship->Category() == ShipClass::CATEGORY_CAPITAL) && target_ship->ComplexCollisionDetection() )
+					if( target_ship && (! target_subsystem) && ((target_ship->Category() == ShipClass::CATEGORY_CAPITAL) || (target_ship->Category() == ShipClass::CATEGORY_TARGET)) && target_ship->ComplexCollisionDetection() )
 					{
 						std::map<std::string,ModelObject*>::const_iterator object_iter = target_ship->Shape.Objects.find("Hull");
 						if( (object_iter != target_ship->Shape.Objects.end()) && object_iter->second->Points.size() )
@@ -2691,7 +2809,7 @@ void XWingServer::Update( double dt )
 						{
 							// Do not fire the heavy weapon again if we still have one going after this target.
 							int available = ((ship->Category() == ShipClass::CATEGORY_GUNBOAT) && (ai_hard || ! target_owner)) ? 2 : 1;
-							for( std::list<Shot*>::const_iterator shot_iter = shots.begin(); shot_iter != shots.end(); shot_iter ++ )
+							for( std::vector<Shot*>::const_iterator shot_iter = shots.begin(); shot_iter != shots.end(); shot_iter ++ )
 							{
 								if( ((*shot_iter)->FiredFrom == ship->ID) && ((*shot_iter)->ShotType == heavy_weapon) && ((*shot_iter)->Seeking == target->ID) )
 								{
@@ -2704,12 +2822,11 @@ void XWingServer::Update( double dt )
 								}
 							}
 						}
-						bool target_is_exhaust_port = (GameType == XWing::GameType::BATTLE_OF_YAVIN) && target_ship && target_ship->IsMissionObjective;
-						if( use_heavy_weapon && (ship->AmmoForWeapon(heavy_weapon) || target_is_exhaust_port) && ! target_subsystem )
+						if( use_heavy_weapon && (ship->AmmoForWeapon(heavy_weapon) || (target == exhaust_port)) && ! target_subsystem )
 						{
 							while( ship->SelectedWeapon != heavy_weapon )
 								ship->NextWeapon();
-							int desired_mode = target_is_exhaust_port ? ship->WeaponCount(heavy_weapon) : 1;
+							int desired_mode = (target == exhaust_port) ? ship->WeaponCount(heavy_weapon) : 1;
 							if( ship->CurrentFiringMode() != desired_mode )
 								ship->NextFiringMode();
 						}
@@ -2764,7 +2881,7 @@ void XWingServer::Update( double dt )
 					double dodge_dist = 100. + ship->Radius();
 					if( target_ship )
 					{
-						dodge_dist += target_ship->Radius();
+						dodge_dist += (target == reactor) ? 200. : target_ship->Radius();
 						
 						// Capital ships do not dodge fighters/bombers ahead.
 						if( (ship->Category() == ShipClass::CATEGORY_CAPITAL) && (target_ship->Category() != ShipClass::CATEGORY_CAPITAL) )
@@ -2810,6 +2927,7 @@ void XWingServer::Update( double dt )
 							shot->MotionVector = vec_to_intercept * shot->Speed();
 						}
 						
+						// Avoid shooting friendly ships.
 						for( std::map<uint32_t,Ship*>::const_iterator ship_iter2 = ships.begin(); ship_iter2 != ships.end(); ship_iter2 ++ )
 						{
 							if( ship_iter2->second == ship )
@@ -2844,6 +2962,25 @@ void XWingServer::Update( double dt )
 										}
 										
 										break;  // We know a shot would hit this ship, so no need to keep checking the other shots.
+									}
+								}
+							}
+						}
+						
+						// Avoid shooting down our own missiles/torpedoes.
+						if( ship->Firing )
+						{
+							for( std::vector<Shot*>::const_iterator missile_iter = missiles.begin(); missile_iter != missiles.end(); missile_iter ++ )
+							{
+								if( (*missile_iter)->FiredFrom == ship->ID )
+								{
+									for( std::vector<Shot*>::const_iterator shot_iter = shots_to_fire.begin(); shot_iter != shots_to_fire.end(); shot_iter ++ )
+									{
+										if( (*shot_iter)->WillCollide( *missile_iter, time_to_target ) )
+										{
+											ship->Firing = false;
+											break;  // We know a shot would hit this missile, so no need to keep checking the other shots.
+										}
 									}
 								}
 							}
@@ -3104,7 +3241,7 @@ void XWingServer::Update( double dt )
 					if( small_ship && ! dodging && (ship->IsMissionObjective || ! go_easy) )
 					{
 						// Dodge the nearest incoming non-player torpedo/missile tracking us when it gets close.
-						for( std::list<Shot*>::const_iterator shot_iter = shots.begin(); shot_iter != shots.end(); shot_iter ++ )
+						for( std::vector<Shot*>::const_iterator shot_iter = shots.begin(); shot_iter != shots.end(); shot_iter ++ )
 						{
 							if( (*shot_iter)->PlayerID && (! ai_hard) && (ai_easy || ! ship->IsMissionObjective) )
 								continue;
@@ -3201,7 +3338,7 @@ void XWingServer::Update( double dt )
 					ship->Firing = false;
 				
 				// See if we should be chasing waypoints.
-				Pos3D *waypoint = NULL;
+				Pos3D *waypoint = NULL, *next_waypoint = NULL, *next_waypoint2 = NULL;
 				std::vector<Pos3D> *waypoint_list = NULL;
 				if( GameType == XWing::GameType::BATTLE_OF_YAVIN )
 				{
@@ -3250,6 +3387,35 @@ void XWingServer::Update( double dt )
 						}
 					}
 				}
+				else if( GameType == XWing::GameType::BATTLE_OF_ENDOR )
+				{
+					// Fighters (and Rebel bombers) should fly in the tunnels toward the reactor.
+					if( (ship->Category() != ShipClass::CATEGORY_CAPITAL) && ((ship->Category() != ShipClass::CATEGORY_BOMBER) || (ship->Team == XWing::Team::REBEL))
+					&&  reactor && (reactor->Health > 0.) && ((ship->Dist(reactor) > 2000.) || (ship->DistAlong(&(reactor->Up),reactor) > 1000.)) )
+					{
+						// Each tunnel path has its own waypoint list, so find the closest one to us.
+						double best_dist = FLT_MAX;
+						for( std::map< uint8_t, std::vector<Pos3D> >::const_iterator waypoints_iter = Waypoints.begin(); waypoints_iter != Waypoints.end(); waypoints_iter ++ )
+						{
+							if( ! waypoints_iter->second.empty() )
+							{
+								for( std::vector<Pos3D>::const_iterator waypoint_iter = waypoints_iter->second.begin(); waypoint_iter != waypoints_iter->second.end(); waypoint_iter ++ )
+								{
+									double dist = waypoint_iter->Dist( ship );
+									if( dist < best_dist )
+									{
+										best_dist = dist;
+										waypoint_list = &(Waypoints[ waypoints_iter->first ]);
+									}
+								}
+							}
+						}
+						
+						// Some fighters should engage in the fleet battle above.
+						if( waypoint_list && (best_dist > 1000.) && (ship->ID % 10 >= 4) )
+							waypoint_list = NULL;
+					}
+				}
 				else if( GameType == XWing::GameType::FLEET_BATTLE )
 				{
 					if( Waypoints[ 0 ].size() )
@@ -3278,6 +3444,11 @@ void XWingServer::Update( double dt )
 					// Allow AI to go off-course to kill players.
 					if( target && target->Owner() && (ship->Lifetime.ElapsedSeconds() >= (target->ID % 4 + 2)) )
 						waypoint = NULL;
+					
+					if( waypoint )
+						next_waypoint = Data.GetObject( ((Checkpoint*)( waypoint ))->Next );
+					if( next_waypoint )
+						next_waypoint2 = Data.GetObject( ((Checkpoint*)( next_waypoint ))->Next );
 				}
 				
 				// If we're chasing waypoints, pick the appropriate one.
@@ -3288,10 +3459,11 @@ void XWingServer::Update( double dt )
 					for( size_t i = 0; i < waypoint_list->size(); i ++ )
 					{
 						Pos3D *wp = &(waypoint_list->at( i ));
+						Pos3D *next_wp = NULL;
 						vec_to_waypoint.Set( wp->X - ship->X, wp->Y - ship->Y, wp->Z - ship->Z );
 						if( i + 1 < waypoint_list->size() )
 						{
-							Pos3D *next_wp = &(waypoint_list->at( i + 1 ));
+							next_wp = &(waypoint_list->at( i + 1 ));
 							vec_to_next.Set( next_wp->X - wp->X, next_wp->Y - wp->Y, next_wp->Z - wp->Z );
 						}
 						
@@ -3302,7 +3474,7 @@ void XWingServer::Update( double dt )
 							if( dist < 20. )
 								continue;
 							
-							if( deathstar && deathstar->WithinTrenchH(wp) && ! deathstar->WithinTrenchH(ship) )
+							if( (GameType == XWing::GameType::BATTLE_OF_YAVIN) && deathstar && deathstar->WithinTrenchH(wp) && ! deathstar->WithinTrenchH(ship) )
 							{
 								// Don't dive straight down into the trench.
 								double dot_up = vec_to_waypoint.Unit().Dot( &(deathstar->Up) );
@@ -3316,6 +3488,13 @@ void XWingServer::Update( double dt )
 							{
 								waypoint = wp;
 								waypoint_dist = dist;
+								next_waypoint = next_wp;
+								if( i + 2 < waypoint_list->size() )
+									next_waypoint2 = &(waypoint_list->at( i + 2 ));
+								
+								// Always start with a tunnel entrance.
+								if( (GameType == XWing::GameType::BATTLE_OF_ENDOR) && (i == 0) && (waypoint->DistAlong( &(ship->Fwd), ship ) > 0.) )
+									break;
 							}
 						}
 					}
@@ -3327,9 +3506,22 @@ void XWingServer::Update( double dt )
 				{
 					Vec3D vec_to_waypoint( waypoint->X - ship->X, waypoint->Y - ship->Y, waypoint->Z - ship->Z );
 					Vec3D unit_vec_to_waypoint = vec_to_waypoint.Unit();
+					Vec3D unit_vec_to_next_waypoint( &unit_vec_to_waypoint );
+					Vec3D unit_vec_to_next_waypoint2( &unit_vec_to_next_waypoint );
+					if( next_waypoint )
+					{
+						Vec3D vec_to_next( next_waypoint->X - ship->X, next_waypoint->Y - ship->Y, next_waypoint->Z - ship->Z );
+						unit_vec_to_next_waypoint = vec_to_next.Unit();
+						unit_vec_to_next_waypoint2 = unit_vec_to_next_waypoint;
+					}
+					if( next_waypoint2 )
+					{
+						Vec3D vec_to_next( next_waypoint2->X - ship->X, next_waypoint2->Y - ship->Y, next_waypoint2->Z - ship->Z );
+						unit_vec_to_next_waypoint = vec_to_next.Unit();
+					}
 					
 					// Fly above the trench until it's a good angle to dive in.
-					if( deathstar && deathstar->WithinTrenchH(waypoint) && ((unit_vec_to_waypoint.Dot( &(deathstar->Up) ) < -0.5) || ! deathstar->WithinTrenchW(ship)) )
+					if( (GameType == XWing::GameType::BATTLE_OF_YAVIN) && deathstar && deathstar->WithinTrenchH(waypoint) && ((unit_vec_to_waypoint.Dot( &(deathstar->Up) ) < -0.5) || ! deathstar->WithinTrenchW(ship)) )
 					{
 						vec_to_waypoint += deathstar->Up * deathstar->TrenchDepth;
 						unit_vec_to_waypoint = vec_to_waypoint.Unit();
@@ -3341,18 +3533,19 @@ void XWingServer::Update( double dt )
 					
 					bool valid_target = false;
 					double dist_to_target = 0.;
-					bool target_is_exhaust_port = false;
 					if( target )
 					{
 						dist_to_target = ship->Dist( target );
 						bool ship_within_trench = deathstar && deathstar->WithinTrenchH( ship );
-						target_is_exhaust_port = (GameType == XWing::GameType::BATTLE_OF_YAVIN) && (target->Type() == XWing::Object::SHIP) && ((Ship*)( target ))->IsMissionObjective;
 						valid_target = facing_target && (w_dot_fwd > (ship_within_trench ? 0.995 : 0.95)) && (dist_to_target < 1000.);
 						if( valid_target && (target->Type() == XWing::Object::TURRET) && (dist_to_target < vec_to_waypoint.Length() * 0.75) )
 							valid_target = false;
 					}
 					
-					if( valid_target && target_is_exhaust_port && ! ai_jedi )
+					if( valid_target && (target == reactor) && (dist_to_target > 2000.) )
+						valid_target = false;  // Don't attack the reactor until done with the tunnels.
+					
+					if( valid_target && (target == exhaust_port) && (players_on_team || ! ai_jedi) )
 					{
 						// We don't typically want AI ships to accurately aim at the exhaust port.
 						valid_target = false;
@@ -3378,7 +3571,19 @@ void XWingServer::Update( double dt )
 						roll = (w_dot_fwd < 0.99) ? (w_dot_right * 2.) : ship->Right.Dot(0.,0.,1.);
 						throttle = pow( w_dot_fwd, 0.7 ) + 0.1;
 						
-						// They do allow some dodging when chasing waypoints, but you can tell they don't like it.
+						// Slow down when a sharp turn is ahead.
+						if( next_waypoint )
+							throttle *= std::max<double>( 0.75, ship->Fwd.Dot( &unit_vec_to_next_waypoint ) );
+						if( next_waypoint2 )
+						{
+							throttle *= std::max<double>( 0.5, ship->Fwd.Dot( &unit_vec_to_next_waypoint2 ) );
+							double w2_dot_right = unit_vec_to_next_waypoint2.Dot( &(ship->Right) );
+							roll += w2_dot_right * 4.;
+							if( GameType == XWing::GameType::BATTLE_OF_ENDOR )
+								pitch = Num::SignedPow( pitch, 2. ) * 10.;
+						}
+						
+						// Slow down if we're about to rear-end someone.
 						if( dodging && (dodging->DistAlong( &(ship->Fwd), ship ) > 0.) )
 							throttle *= 0.75;
 						
@@ -3432,12 +3637,12 @@ void XWingServer::Update( double dt )
 							}
 						}
 						
-						// Don't fire at the waypoint just because our target is somewhere near the front of us.
-						if( ! target_is_exhaust_port )
+						// Don't fire at the waypoint just because our target is somewhere near the front of us (unless it's the exhaust port).
+						if( target != exhaust_port )
 							ship->Firing = false;
 					}
 				}
-				else if( deathstar )
+				else if( deathstar && ((GameType == XWing::GameType::BATTLE_OF_YAVIN) || ! deathstar->WithinTrenchW(ship)) )
 				{
 					// Don't be like Porkins.
 					double dist = ship->DistAlong( &(deathstar->Up), deathstar ) - ship->Radius();
@@ -3646,6 +3851,7 @@ void XWingServer::Update( double dt )
 		Ship *rebel_coop_respawn = NULL, *empire_coop_respawn = NULL;
 		//double safest_rebel_respawn = 0., safest_empire_respawn = 0.;  // FIXME
 		double respawn_time = Data.PropertyAsDouble( "respawn_time", RespawnDelay, RespawnDelay );
+		double superlaser_time = (GameType == XWing::GameType::BATTLE_OF_ENDOR) ? Data.PropertyAsDouble("endor_superlaser_time") : 0.;
 		
 		for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
 		{
@@ -3900,7 +4106,7 @@ void XWingServer::Update( double dt )
 							{
 								bool rebel = (ship->Team == XWing::Team::REBEL);
 								double minutes_remaining = round_time_remaining / 60.;
-								double closer = (rebel ? 0. : -3000.);
+								double closer = (rebel ? 0. : (Data.PropertyAsDouble("respawn_dist",3000.) * -1.));
 								if( ship->PlayerID )
 								{
 									closer += 1000.;
@@ -3913,11 +4119,20 @@ void XWingServer::Update( double dt )
 								ship->SetFwdVec( 1., 0., 0. );
 								ship->SetUpVec( 0., 0., 1. );
 							}
+							else if( GameType == XWing::GameType::BATTLE_OF_ENDOR )
+							{
+								bool rebel = (ship->Team == XWing::Team::REBEL);
+								ship->SetUpVec( 0., 0., 1. );
+								ship->SetFwdVec( (rebel ? -1. : 1.), Rand::Double(-0.5,0.5), Rand::Double(-0.5,0.) );
+								ship->SetPos( 0., 0., 0. );
+								ship->MoveAlong( &(ship->Fwd), Data.PropertyAsDouble("respawn_dist",3000.) * -1. );
+							}
 							else
 							{
-								ship->SetPos( Rand::Double(-2000.,2000.), Rand::Double(-2000.,2000.), Rand::Double(-2000.,2000.) );
 								ship->SetUpVec( 0., 0., 1. );
-								ship->SetFwdVec( -(ship->X), -(ship->Y), -(ship->Z) );
+								ship->SetFwdVec( Rand::Double(-1.,1.), Rand::Double(-1.,1.), Rand::Double(-1.,1.) );
+								ship->SetPos( 0., 0., 0. );
+								ship->MoveAlong( &(ship->Fwd), Data.PropertyAsDouble("respawn_dist",3000.) * -1. );
 							}
 							ship->FixVectors();
 							SpawnShipTurrets( ship, &add_object_ids );
@@ -4015,6 +4230,9 @@ void XWingServer::Update( double dt )
 						continue;
 					}
 					
+					if( superlaser_time && (turret->Weapon == Shot::TYPE_SUPERLASER) && ! turret->ParentID )
+						turret->SingleShotDelay = superlaser_time;
+					
 					GameObject *target = NULL;
 					Player *target_owner = NULL;
 					uint8_t target_subsystem = 0;
@@ -4046,7 +4264,7 @@ void XWingServer::Update( double dt )
 						double nearest_enemy = 100000.;
 						double nearest_friendly = nearest_enemy;
 						Ship *friendly = NULL;
-						bool found_exhaust_port = false;
+						bool deathstar_alive = false;
 						
 						for( std::map<uint32_t,Ship*>::iterator target_iter = ships.begin(); target_iter != ships.end(); target_iter ++ )
 						{
@@ -4061,7 +4279,16 @@ void XWingServer::Update( double dt )
 							// Death Star turrets stop firing a couple seconds after the exhaust port is hit.
 							if( (GameType == XWing::GameType::BATTLE_OF_YAVIN) && target_iter->second->IsMissionObjective
 							&&  ((target_iter->second->Health > 0.) || (target_iter->second->DeathClock.ElapsedSeconds() < 2.)) )
-								found_exhaust_port = true;
+								deathstar_alive = true;
+							
+							// Death Star II stops firing SuperLaser and turrets after its generator explodes.
+							if( (GameType == XWing::GameType::BATTLE_OF_ENDOR) && target_iter->second->IsMissionObjective
+							&&  (target_iter->second->Category() == ShipClass::CATEGORY_TARGET) && (target_iter->second->Health > 0.) )
+								deathstar_alive = true;
+							
+							// Fully armed and operational Death Star II should only fire its SuperLaser at capital ships in the Rebel fleet.
+							if( (GameType == XWing::GameType::BATTLE_OF_ENDOR) && (turret->Weapon == Shot::TYPE_SUPERLASER) && (target_iter->second->Category() != ShipClass::CATEGORY_CAPITAL) )
+								continue;
 							
 							// Don't target ships that are still jumping in or have jumped out.
 							if( (target_iter->second->JumpProgress < 1.) || target_iter->second->JumpedOut )
@@ -4133,8 +4360,8 @@ void XWingServer::Update( double dt )
 							}
 						}
 						
-						// Death Star turrets stop firing after the exhaust port is destroyed.
-						if( target && (GameType == XWing::GameType::BATTLE_OF_YAVIN) && (! found_exhaust_port) && (! parent_ship) )
+						// Death Star turrets stop firing after it has been destroyed.
+						if( target && ((GameType == XWing::GameType::BATTLE_OF_YAVIN) || (GameType == XWing::GameType::BATTLE_OF_ENDOR)) && (! deathstar_alive) && (! parent_ship) )
 						{
 							target = NULL;
 							target_owner = NULL;
@@ -4197,9 +4424,9 @@ void XWingServer::Update( double dt )
 						}
 						double dist_to_target = vec_to_target.Length();
 						Vec3D shot_vec = gun.Fwd;
-						shot_vec.ScaleTo( 700. );  // Shot::Speed
+						shot_vec.ScaleTo( 750. );  // Shot::Speed
 						shot_vec += turret->MotionVector;
-						shot_vec.ScaleTo( 700. );  // Shot::Speed
+						shot_vec.ScaleTo( 750. );  // Shot::Speed
 						shot_vec -= target->MotionVector;
 						double time_to_target = dist_to_target / shot_vec.Length();
 						Vec3D vec_to_intercept = vec_to_target;
@@ -4388,7 +4615,7 @@ void XWingServer::Update( double dt )
 		
 		// Send explosions if the Death Star is dying.
 		
-		if( (GameType == XWing::GameType::BATTLE_OF_YAVIN) && (! empire_objectives) )
+		if( (GameType == XWing::GameType::BATTLE_OF_YAVIN) && ! empire_objectives )
 		{
 			double ended_secs = RoundEndedTimer.ElapsedSeconds();
 			if( (ended_secs >= 3.) && Rand::Bool( FrameTime * ended_secs / 2. ) )
@@ -4410,6 +4637,82 @@ void XWingServer::Update( double dt )
 				Net.SendAll( &explosion );
 			}
 		}
+		else if( (GameType == XWing::GameType::BATTLE_OF_ENDOR) && ! empire_objectives )
+		{
+			static Clock endor_explosion;
+			double explosion_time = endor_explosion.ElapsedSeconds();
+			Pos3D explosion_center = deathstar ? (*deathstar - deathstar->Up * deathstar->TrenchDepth) : Pos3D( 0., 0., -3000. );
+			if( (explosion_time > 1.4) || (endor_explosion.Progress() > 1.) )
+			{
+				endor_explosion.Reset( Rand::Double(0.4,1.2) );
+				double safe_time = Data.PropertyAsDouble( "endor_safe_time", 40., 2. );
+				std::set<Ship*> ships_inside;
+				const Ship *reactor = NULL;
+				if( deathstar )
+				{
+					for( std::map<uint32_t,Ship*>::const_iterator ship_iter = ships.begin(); ship_iter != ships.end(); ship_iter ++ )
+					{
+						if( deathstar->WithinTrenchH( ship_iter->second ) )
+							ships_inside.insert( ship_iter->second );
+						if( ship_iter->second->IsMissionObjective && (ship_iter->second->Team == XWing::Team::EMPIRE) )
+						{
+							reactor = ship_iter->second;
+							explosion_center.Copy( reactor );
+						}
+					}
+				}
+				double reactor_dead = reactor ? reactor->DeathClock.ElapsedSeconds() : RoundEndedTimer.ElapsedSeconds();
+				
+				for( std::set<Ship*>::iterator ship_iter = ships_inside.begin(); ship_iter != ships_inside.end(); ship_iter ++ )
+				{
+					Ship *ship = *ship_iter;
+					bool explosion_ahead = (explosion_center.DistAlong( &(ship->Fwd), ship ) > 0.);
+					Pos3D explosion_at( ship );
+					Vec3D explosion_move( ship->MotionVector + ship->Fwd + ship->Right * Rand::Double( -1., 1. ) + ship->Up * Rand::Double( -1., 1. ) );
+					explosion_move.ScaleBy( explosion_ahead ? -1.5 : 1.1 );
+					explosion_at -= explosion_move;
+					
+					Packet explosion( XWing::Packet::EXPLOSION );
+					explosion.AddDouble( explosion_at.X );  // X
+					explosion.AddDouble( explosion_at.Y );  // Y
+					explosion.AddDouble( explosion_at.Z );  // Z
+					explosion.AddFloat( explosion_move.X ); // dX
+					explosion.AddFloat( explosion_move.Y ); // dY
+					explosion.AddFloat( explosion_move.Z ); // dZ
+					float size = Rand::Double(200.,2000.);
+					explosion.AddFloat( size );  // Size
+					explosion.AddFloat( Rand::Double( size / 1000., log(size) ) ); // Loudness
+					explosion.AddUChar( 30 );    // Sub-Explosions
+					explosion.AddFloat( 1.33f ); // Speed Scale
+					explosion.AddFloat( 0.66f ); // Speed Scale Sub
+					Net.SendAll( &explosion );
+					
+					// FIXME: Instead of just speed, check how much MotionVector is moving away from explosion_at?
+					double speed = ship->MotionVector.Length();
+					if( ((reactor_dead > safe_time) || (speed < 133.) || explosion_ahead || ! ship->PlayerID) && (ship->Health > 0.) )
+					{
+						if( explosion_ahead )
+							ship->AddDamage( reactor_dead * size / std::max<double>( 200., speed * 5. ), 0 );
+						else if( Rand::Bool( explosion_time * reactor_dead * size / 17000. ) )
+							ship->AddDamage( 0, reactor_dead * size / std::max<double>( 200., speed * 10. ) );
+						
+						// Send the hit.
+						Packet hit( XWing::Packet::MISC_HIT_SHIP );
+						hit.AddUInt( ship->ID );
+						hit.AddFloat( ship->Health );
+						hit.AddFloat( ship->ShieldF );
+						hit.AddFloat( ship->ShieldR );
+						hit.AddUChar( ship->HitFlags );
+						hit.AddString( "" );
+						hit.AddDouble( ship->PrevPos.X );
+						hit.AddDouble( ship->PrevPos.Y );
+						hit.AddDouble( ship->PrevPos.Z );
+						hit.AddDouble( reactor_dead );
+						Net.SendAll( &hit );
+					}
+				}
+			}
+		}
 		
 		
 		// If all players are dead with no abiltiy to respawn, we will consider that when checking end-of-round and victory conditions.
@@ -4427,7 +4730,7 @@ void XWingServer::Update( double dt )
 			{
 				State = XWing::State::ROUND_WILL_END;
 				RoundEndedDelay = 0.;
-				if( Data.PropertyAsBool("debug") )
+				if( sv_debug )
 					Console->Print( std::string("Round Will End: victor = ") + Data.PropertyAsString("victor") );
 			}
 			else if( time_limit_reached )
@@ -4437,7 +4740,7 @@ void XWingServer::Update( double dt )
 					RoundEndedDelay = 7.7;
 				else
 					RoundEndedDelay = 0.;
-				if( Data.PropertyAsBool("debug") )
+				if( sv_debug )
 					Console->Print( "Round Will End: Time Limit Reached" );
 			}
 			else if( ! Data.PropertyAsBool("endgame",true,true) )
@@ -4448,7 +4751,7 @@ void XWingServer::Update( double dt )
 				{
 					State = XWing::State::ROUND_WILL_END;
 					RoundEndedDelay = 3.;
-					if( Data.PropertyAsBool("debug") )
+					if( sv_debug )
 						Console->Print( "Round Will End: Team Elimination" );
 				}
 			}
@@ -4458,14 +4761,14 @@ void XWingServer::Update( double dt )
 				{
 					State = XWing::State::ROUND_WILL_END;
 					RoundEndedDelay = 3.;
-					if( Data.PropertyAsBool("debug") )
+					if( sv_debug )
 						Console->Print( "Round Will End: Team Race: All Dead" );
 				}
 				else if( Checkpoints && ((TeamScores[ XWing::Team::REBEL ] >= Checkpoints) || (TeamScores[ XWing::Team::EMPIRE ] >= Checkpoints)) )
 				{
 					State = XWing::State::ROUND_WILL_END;
 					RoundEndedDelay = 0.;
-					if( Data.PropertyAsBool("debug") )
+					if( sv_debug )
 						Console->Print( "Round Will End: Team Race: Team Score" );
 				}
 			}
@@ -4475,7 +4778,7 @@ void XWingServer::Update( double dt )
 				{
 					State = XWing::State::ROUND_WILL_END;
 					RoundEndedDelay = 3.;
-					if( Data.PropertyAsBool("debug") )
+					if( sv_debug )
 						Console->Print( "Round Will End: FFA Elim/Race: All Dead" );
 				}
 				else if( (GameType == XWing::GameType::FFA_RACE) && Checkpoints )
@@ -4487,7 +4790,7 @@ void XWingServer::Update( double dt )
 						{
 							State = XWing::State::ROUND_WILL_END;
 							RoundEndedDelay = 0.;
-							if( Data.PropertyAsBool("debug") )
+							if( sv_debug )
 								Console->Print( "Round Will End: FFA Race: Player Score" );
 							break;
 						}
@@ -4500,7 +4803,7 @@ void XWingServer::Update( double dt )
 						{
 							State = XWing::State::ROUND_WILL_END;
 							RoundEndedDelay = 0.;
-							if( Data.PropertyAsBool("debug") )
+							if( sv_debug )
 								Console->Print( "Round Will End: FFA Race: Ship Score" );
 							break;
 						}
@@ -4513,7 +4816,7 @@ void XWingServer::Update( double dt )
 				{
 					State = XWing::State::ROUND_WILL_END;
 					RoundEndedDelay = 0.;
-					if( Data.PropertyAsBool("debug") )
+					if( sv_debug )
 						Console->Print( "Round Will End: Team Deathmatch: Team Score" );
 				}
 			}
@@ -4526,7 +4829,7 @@ void XWingServer::Update( double dt )
 					{
 						State = XWing::State::ROUND_WILL_END;
 						RoundEndedDelay = 0.;
-						if( Data.PropertyAsBool("debug") )
+						if( sv_debug )
 							Console->Print( "Round Will End: FFA Deathmatch: Player Score" );
 						break;
 					}
@@ -4539,7 +4842,7 @@ void XWingServer::Update( double dt )
 					{
 						State = XWing::State::ROUND_WILL_END;
 						RoundEndedDelay = 0.;
-						if( Data.PropertyAsBool("debug") )
+						if( sv_debug )
 							Console->Print( "Round Will End: FFA Deathmatch: Ship Score" );
 						break;
 					}
@@ -4551,8 +4854,18 @@ void XWingServer::Update( double dt )
 				{
 					State = XWing::State::ROUND_WILL_END;
 					RoundEndedDelay = 3.;
-					if( Data.PropertyAsBool("debug") )
+					if( sv_debug )
 						Console->Print( "Round Will End: Battle of Yavin" );
+				}
+			}
+			else if( GameType == XWing::GameType::BATTLE_OF_ENDOR )
+			{
+				if( (! empire_objectives) || (! rebel_objectives) || ((rebel_count == 0) && dead_count && ! Respawn) )
+				{
+					State = XWing::State::ROUND_WILL_END;
+					RoundEndedDelay = empire_objectives ? 5. : Data.PropertyAsDouble( "endor_exit_time", 55., 55. );
+					if( sv_debug )
+						Console->Print( "Round Will End: Battle of Endor" );
 				}
 			}
 			else if( GameType == XWing::GameType::CAPITAL_SHIP_HUNT )
@@ -4563,7 +4876,7 @@ void XWingServer::Update( double dt )
 					{
 						State = XWing::State::ROUND_WILL_END;
 						RoundEndedDelay = 5.;
-						if( Data.PropertyAsBool("debug") )
+						if( sv_debug )
 							Console->Print( "Round Will End: Hunt: Empire Defending" );
 					}
 				}
@@ -4573,7 +4886,7 @@ void XWingServer::Update( double dt )
 					{
 						State = XWing::State::ROUND_WILL_END;
 						RoundEndedDelay = 5.;
-						if( Data.PropertyAsBool("debug") )
+						if( sv_debug )
 							Console->Print( "Round Will End: Hunt: Rebel Defending" );
 					}
 				}
@@ -4584,7 +4897,7 @@ void XWingServer::Update( double dt )
 				{
 					State = XWing::State::ROUND_WILL_END;
 					RoundEndedDelay = 5.;
-					if( Data.PropertyAsBool("debug") )
+					if( sv_debug )
 						Console->Print( "Round Will End: Fleet Battle" );
 				}
 			}
@@ -4598,7 +4911,7 @@ void XWingServer::Update( double dt )
 			{
 				State = XWing::State::ROUND_WILL_END;
 				RoundEndedDelay = 1.5;
-				if( Data.PropertyAsBool("debug") )
+				if( sv_debug )
 					Console->Print( "Round Will End: All Players Dead" );
 				
 				/*
@@ -4957,6 +5270,19 @@ void XWingServer::Update( double dt )
 						victor_name = "The Galactic Empire";
 					}
 				}
+				else if( GameType == XWing::GameType::BATTLE_OF_ENDOR )
+				{
+					if( (dead_player_team == XWing::Team::EMPIRE) || ! empire_objectives )
+					{
+						victor = XWing::Team::REBEL;
+						victor_name = "The Rebel Alliance";
+					}
+					else if( (dead_player_team == XWing::Team::REBEL) || ! rebel_objectives )
+					{
+						victor = XWing::Team::EMPIRE;
+						victor_name = "The Galactic Empire";
+					}
+				}
 				else if( GameType == XWing::GameType::CAPITAL_SHIP_HUNT )
 				{
 					if( DefendingTeam == XWing::Team::EMPIRE )
@@ -5086,7 +5412,7 @@ void XWingServer::Update( double dt )
 				std::string eligible_team;
 				if( dead_player_team || (EventTriggers.find( MissionEvent::TRIGGER_ON_VICTORY ) != EventTriggers.end()) )
 					eligible_team = "Nobody";
-				else if( (GameType == XWing::GameType::FLEET_BATTLE) || (GameType == XWing::GameType::TEAM_ELIMINATION) )
+				else if( (GameType == XWing::GameType::FLEET_BATTLE) || (GameType == XWing::GameType::TEAM_ELIMINATION) || (GameType == XWing::GameType::TEAM_DEATHMATCH) )
 				{
 					if( victor == XWing::Team::REBEL )
 						eligible_team = "Rebel";
@@ -5096,6 +5422,13 @@ void XWingServer::Update( double dt )
 						eligible_team = "Nobody";
 				}
 				else if( GameType == XWing::GameType::BATTLE_OF_YAVIN )
+				{
+					if( victor == XWing::Team::REBEL )
+						eligible_team = "Rebel";
+					else
+						eligible_team = "Nobody";
+				}
+				else if( GameType == XWing::GameType::BATTLE_OF_ENDOR )
 				{
 					if( victor == XWing::Team::REBEL )
 						eligible_team = "Rebel";
@@ -5129,7 +5462,7 @@ void XWingServer::Update( double dt )
 						int kills   = player_iter->second->PropertyAsInt("kills");
 						int kills_c = player_iter->second->PropertyAsInt("kills_c");
 						int deaths  = player_iter->second->PropertyAsInt("deaths");
-						int impressive_ratio = ai_hard ? 1 : (ai_easy ? (ai_pudu ? 9000 : 10) : 2);
+						int impressive_ratio = ai_hard ? 1 : (ai_easy ? (ai_pudu ? 100 : 10) : 2);
 						int impressive_kills = std::max<int>( impressive_ratio, ai_jedi ? 2 : 3 );
 						if( death_star_destroyed && (kills_c >= 1) )
 						{
@@ -5138,7 +5471,7 @@ void XWingServer::Update( double dt )
 							great_shot.AddString( "great_shot.wav" );
 							Net.SendToPlayer( &great_shot, player_iter->first );
 						}
-						if( ((kills + kills_c) > deaths * impressive_ratio) && (kills >= impressive_kills) && (kills_c >= 0) && (ai_waves >= (((GameType == XWing::GameType::FFA_ELIMINATION) && ! deaths) ? 1 : 3)) && (Cheaters.find( player_iter->first ) == Cheaters.end()) )
+						if( ((kills + kills_c) > (deaths * impressive_ratio)) && (kills >= impressive_kills) && (kills_c >= 0) && (ai_waves >= (((GameType == XWing::GameType::FFA_ELIMINATION) && ! deaths) ? 1 : 3)) && (Cheaters.find( player_iter->first ) == Cheaters.end()) )
 						{
 							// More kills than deaths vs Ace AI.
 							Packet impressive( XWing::Packet::ACHIEVEMENT );
@@ -5561,6 +5894,8 @@ uint32_t XWingServer::ParseGameType( std::string gametype ) const
 		return XWing::GameType::FFA_RACE;
 	else if( Str::EqualsInsensitive( gametype, "yavin" ) )
 		return XWing::GameType::BATTLE_OF_YAVIN;
+	else if( Str::EqualsInsensitive( gametype, "endor" ) )
+		return XWing::GameType::BATTLE_OF_ENDOR;
 	else if( Str::EqualsInsensitive( gametype, "hunt" ) || Str::EqualsInsensitive( gametype, "defend" ) )
 		return XWing::GameType::CAPITAL_SHIP_HUNT;
 	else if( Str::EqualsInsensitive( gametype, "fleet" ) )
@@ -5575,6 +5910,8 @@ void XWingServer::BeginFlying( uint16_t player_id, bool respawn )
 	// Don't allow someone to hit Fly while the round is ending.
 	if( State > XWing::State::FLYING )
 		return;
+	
+	bool sv_debug = Data.PropertyAsBool("debug");
 	
 	if( State < XWing::State::FLYING )
 	{
@@ -5753,6 +6090,11 @@ void XWingServer::BeginFlying( uint16_t player_id, bool respawn )
 			Alerts[ 60. ] = XWingServerAlert( "deathstar_1min.wav", "Rebel base 1 minute and closing." );
 			Alerts[ 30. ] = XWingServerAlert( "deathstar_30sec.wav", "Rebel base 30 seconds and closing." );
 			Alerts[ 0. ] = XWingServerAlert( "deathstar_0sec.wav", "The Death Star has cleared the planet!  The Death Star has cleared the planet!  Rebel base in range." );
+		}
+		else if( GameType == XWing::GameType::BATTLE_OF_ENDOR )
+		{
+			Respawn = Data.PropertyAsBool("respawn");
+			RespawnDelay = Data.PropertyAsDouble("endor_respawn",15.);
 		}
 		else if( GameType == XWing::GameType::CAPITAL_SHIP_HUNT )
 		{
@@ -6204,6 +6546,801 @@ void XWingServer::BeginFlying( uint16_t player_id, bool respawn )
 				waypoint.MoveAlong( &(deathstar->Up), -30. );
 				waypoint.MoveAlong( &(deathstar->Right), (fwd + 1000.) * -0.1 );
 				Waypoints[ 2 ].push_back( waypoint );
+			}
+		}
+		else if( GameType == XWing::GameType::BATTLE_OF_ENDOR )
+		{
+			// Create basic Death Star surface with a deep wide trench for access to the superstructure.
+			DeathStar *deathstar = new DeathStar();
+			deathstar->X = -8000.;
+			deathstar->Y = 0.;
+			deathstar->Z = -1000.;
+			deathstar->SetFwdVec( -1., 0., 0. );
+			deathstar->SetUpVec( 0., 0., 1. );
+			deathstar->TrenchWidth = 5000.;
+			deathstar->TrenchDepth = 4000.;
+			Data.AddObject( deathstar );
+			
+			// Preload and scale models.
+			Model core_obj(   std::string("Models/endor_core.obj"),   false );
+			core_obj.ScaleTo(   4000.,3000.,4000. );
+			Model blades_obj( std::string("Models/endor_blades.obj"), false );
+			blades_obj.ScaleTo( 1000., 150., 250. );
+			Model tunnel_obj( std::string("Models/endor_tunnel.obj"), false );
+			tunnel_obj.ScaleTo(  500.,  50.,  50. );
+			Model fork_obj(   std::string("Models/endor_fork.obj"),   false );
+			fork_obj.ScaleTo(    100.,  50., 100. );
+			Model turn_obj(   std::string("Models/endor_turn.obj"),   false );
+			turn_obj.ScaleTo(    100.,  50., 100. );
+			Model room_obj(   std::string("Models/endor_room.obj"),   false );
+			room_obj.ScaleTo(   2000., 150., 250. );
+			Model tubes_obj(  std::string("Models/endor_tubes.obj"),  false );
+			tubes_obj.ScaleTo(  1500., 150., 150. );
+			Model exit_obj(   std::string("Models/endor_exit.obj"),   false );
+			exit_obj.ScaleTo(    100.,  25., 100. );
+			Model pipe_obj(   std::string("Models/endor_pipe.obj"),   false );
+			pipe_obj.ScaleTo(     15.,  15., 250. );
+			Model pipes_obj(  std::string("Models/endor_pipes.obj"),  false );
+			pipes_obj.ScaleTo(    25.,  25., 250. );
+			
+			// We'll use this to track all tunnel surface exits.
+			std::map< Obstacle*, Pos3D > exits;
+			
+			// Reactor room.
+			Pos3D pos( deathstar );
+			pos.MoveRelative( 0., -2750., 0. );
+			Obstacle *core = new Obstacle( "endor_core.obj", &core_obj, pos, "the wall" );
+			Data.AddObject( core );
+			
+			Ship *reactor = SpawnShip( GetShipClass("Reactor"), XWing::Team::EMPIRE );
+			reactor->Copy( core );
+			reactor->MoveAlong( &(core->Up), -300. );
+			reactor->IsMissionObjective = true;
+			reactor->CanRespawn = false;
+			reactor->Name = "Main Reactor";
+			Data.AddObject( reactor );
+			
+			// Blades and first fork.
+			pos.MoveRelative( -1500., 0., 0. );
+			Waypoints[ 0 ].push_back( pos - pos.Up * 200. );
+			Waypoints[ 2 ].push_back( pos - pos.Up * 225. );
+			Waypoints[ 1 ].push_back( pos - pos.Up * 250. );
+			Waypoints[ 3 ].push_back( pos - pos.Up * 275. );
+			pos.MoveRelative( -1000., 0., 0. );
+			Obstacle *blades = new Obstacle( "endor_blades.obj", &blades_obj, pos, "the wall" );
+			blades->SnapTo( core );
+			Data.AddObject( blades );
+			pos.Copy( blades );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd * 500. );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd * 500. );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd * 500. );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd * 500. );
+			Waypoints[ 0 ].push_back( pos );
+			Waypoints[ 1 ].push_back( pos );
+			Waypoints[ 2 ].push_back( pos );
+			Waypoints[ 3 ].push_back( pos );
+			Data.AddObject( new Obstacle( "endor_pipe.obj",  &pipe_obj,  *blades + pos.Up *  40. + pos.Fwd * -310., "a pipe" ) );
+			Data.AddObject( new Obstacle( "endor_pipes.obj", &pipes_obj, *blades + pos.Up * -45. + pos.Fwd * -310., "a pipe" ) );
+			Data.AddObject( new Obstacle( "endor_pipes.obj", &pipes_obj, *blades + pos.Up *  45. + pos.Fwd * -165., "a pipe" ) );
+			Data.AddObject( new Obstacle( "endor_pipe.obj",  &pipe_obj,  *blades + pos.Up * -25. + pos.Fwd *  -20., "a pipe" ) );
+			Data.AddObject( new Obstacle( "endor_pipe.obj",  &pipe_obj,  *blades + pos.Up *  25. + pos.Fwd *   20., "a pipe" ) );
+			Data.AddObject( new Obstacle( "endor_pipes.obj", &pipes_obj, *blades + pos.Up * -45. + pos.Fwd *  165., "a pipe" ) );
+			Data.AddObject( new Obstacle( "endor_pipes.obj", &pipes_obj, *blades + pos.Up *  50. + pos.Fwd *  310., "a pipe" ) );
+			pos.Yaw( 180. );
+			pos.MoveRelative( 750. );
+			Obstacle *tunnel = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			tunnel->SnapTo( blades );
+			Data.AddObject( tunnel );
+			pos.Copy( tunnel );
+			Waypoints[ 0 ].push_back( pos );
+			Waypoints[ 2 ].push_back( pos );
+			Waypoints[ 1 ].push_back( pos );
+			Waypoints[ 3 ].push_back( pos );
+			pos.MoveRelative( 300. );
+			Obstacle *fork1 = new Obstacle( "endor_fork.obj", &fork_obj, pos, "the corner" );
+			fork1->SnapTo( tunnel );
+			Data.AddObject( fork1 );
+			pos.Copy( fork1 );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd * -50. + pos.Right *  -7. );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd * -50. + pos.Right *   7. );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd * -50. + pos.Right *  -7. );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd * -50. + pos.Right *   7. );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd *  21. + pos.Right * -21. );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd *  21. + pos.Right *  21. );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd *  21. + pos.Right * -21. );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd *  21. + pos.Right *  21. );
+			
+			Obstacle *branch1 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch1->Yaw( -45. );
+			branch1->MoveRelative( 300. );
+			branch1->SnapTo( fork1 );
+			Data.AddObject( branch1 );
+			//
+			Obstacle *branch2 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch2->Yaw( 45. );
+			branch2->MoveRelative( 300. );
+			branch2->SnapTo( fork1 );
+			Data.AddObject( branch2 );
+			
+			pos.Copy( branch1 );
+			Waypoints[ 0 ].push_back( pos );
+			Waypoints[ 2 ].push_back( pos );
+			pos.MoveRelative( 300. );
+			Obstacle *branch1_turn = new Obstacle( "endor_turn.obj", &turn_obj, pos, "the corner" );
+			branch1_turn->Roll( -90. );
+			branch1_turn->SnapTo( branch1 );
+			Data.AddObject( branch1_turn );
+			//
+			pos.Copy( branch2 );
+			Waypoints[ 1 ].push_back( pos );
+			Waypoints[ 3 ].push_back( pos );
+			pos.MoveRelative( 300. );
+			Obstacle *branch2_turn = new Obstacle( "endor_turn.obj", &turn_obj, pos, "the corner" );
+			branch2_turn->Roll( -90. );
+			branch2_turn->SnapTo( branch2 );
+			Data.AddObject( branch2_turn );
+			
+			pos.Copy( branch1_turn );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			pos.Roll( 90. );
+			pos.Pitch( 45. );
+			pos.MoveRelative( 300. );
+			branch1 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch1->SnapTo( branch1_turn );
+			Data.AddObject( branch1 );
+			//
+			pos.Copy( branch2_turn );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			pos.Roll( 90. );
+			pos.Pitch( 45. );
+			pos.MoveRelative( 300. );
+			branch2 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch2->SnapTo( branch2_turn );
+			Data.AddObject( branch2 );
+			
+			pos.Copy( branch1 );
+			Waypoints[ 0 ].push_back( pos );
+			Waypoints[ 2 ].push_back( pos );
+			pos.MoveRelative( 300. );
+			branch1_turn = new Obstacle( "endor_turn.obj", &turn_obj, pos, "the corner" );
+			branch1_turn->SnapTo( branch1 );
+			Data.AddObject( branch1_turn );
+			//
+			pos.Copy( branch2 );
+			Waypoints[ 1 ].push_back( pos );
+			Waypoints[ 3 ].push_back( pos );
+			pos.MoveRelative( 300. );
+			branch2_turn = new Obstacle( "endor_turn.obj", &turn_obj, pos, "the corner" );
+			branch2_turn->Roll( 180. );
+			branch2_turn->SnapTo( branch2 );
+			Data.AddObject( branch2_turn );
+			
+			pos.Copy( branch1_turn );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			pos.Yaw( 45. );
+			pos.MoveRelative( 300. );
+			branch1 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch1->SnapTo( branch1_turn );
+			Data.AddObject( branch1 );
+			//
+			pos.Copy( branch2_turn );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			pos.Roll( 180. );
+			pos.Yaw( -45. );
+			pos.MoveRelative( 300. );
+			branch2 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch2->SnapTo( branch2_turn );
+			Data.AddObject( branch2 );
+			
+			pos.Copy( branch1 );
+			Waypoints[ 0 ].push_back( pos );
+			Waypoints[ 2 ].push_back( pos );
+			pos.MoveRelative( 300. );
+			Obstacle *branch1_fork = new Obstacle( "endor_fork.obj", &fork_obj, pos, "the corner" );
+			branch1_fork->SnapTo( branch1 );
+			Data.AddObject( branch1_fork );
+			//
+			pos.Copy( branch2 );
+			Waypoints[ 1 ].push_back( pos );
+			Waypoints[ 3 ].push_back( pos );
+			pos.MoveRelative( 300. );
+			Obstacle *branch2_fork = new Obstacle( "endor_fork.obj", &fork_obj, pos, "the corner" );
+			branch2_fork->SnapTo( branch2 );
+			Data.AddObject( branch2_fork );
+			
+			pos.Copy( branch1_fork );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd * -50. + pos.Right *  -7. );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd *  21. + pos.Right * -21. );
+			pos.Yaw( -45. );
+			pos.MoveRelative( 300. );
+			branch1 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch1->SnapTo( branch1_fork );
+			Data.AddObject( branch1 );
+			//
+			pos.Copy( branch1_fork );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			pos.Yaw( 45. );
+			pos.MoveRelative( 300. );
+			Obstacle *branch1_in = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch1_in->SnapTo( branch1_fork );
+			Data.AddObject( branch1_in );
+			
+			pos.Copy( branch2_fork );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			pos.Yaw( 45. );
+			pos.MoveRelative( 300. );
+			branch2 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch2->SnapTo( branch2_fork );
+			Data.AddObject( branch2 );
+			//
+			pos.Copy( branch2_fork );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd * -50. + pos.Right *  -7. );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd *  21. + pos.Right * -21. );
+			pos.Yaw( -45. );
+			pos.MoveRelative( 300. );
+			Obstacle *branch2_in = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch2_in->SnapTo( branch2_fork );
+			Data.AddObject( branch2_in );
+			
+			// Outside
+			
+			pos.Copy( branch1 );
+			Waypoints[ 0 ].push_back( pos );
+			pos.MoveRelative( 300. );
+			branch1_turn = new Obstacle( "endor_turn.obj", &turn_obj, pos, "the corner" );
+			branch1_turn->SnapTo( branch1 );
+			Data.AddObject( branch1_turn );
+			//
+			pos.Copy( branch2 );
+			Waypoints[ 1 ].push_back( pos );
+			pos.MoveRelative( 300. );
+			branch2_turn = new Obstacle( "endor_turn.obj", &turn_obj, pos, "the corner" );
+			branch2_turn->Roll( 180. );
+			branch2_turn->SnapTo( branch2 );
+			Data.AddObject( branch2_turn );
+			
+			pos.Copy( branch1_turn );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			pos.Roll( 90. );
+			pos.Pitch( 45. );
+			pos.MoveRelative( 300. );
+			branch1 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch1->SnapTo( branch1_turn );
+			Data.AddObject( branch1 );
+			pos.Copy( branch1 );
+			Waypoints[ 0 ].push_back( pos );
+			//
+			pos.Copy( branch2_turn );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			pos.Roll( 90. );
+			pos.Pitch( 45. );
+			pos.MoveRelative( 300. );
+			branch2 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch2->SnapTo( branch2_turn );
+			Data.AddObject( branch2 );
+			pos.Copy( branch2 );
+			Waypoints[ 1 ].push_back( pos );
+			
+			pos.Copy( branch1 );
+			pos.MoveRelative( 1000. );
+			Obstacle *tube1 = new Obstacle( "endor_tubes.obj", &tubes_obj, pos, "a big pipe" );
+			tube1->SnapTo( branch1 );
+			pos.Copy( tube1 );
+			Waypoints[ 0 ].push_back( pos - pos.Fwd * 400. );
+			Waypoints[ 0 ].push_back( pos );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd * 400. );
+			tube1->Yaw( 180. );
+			tube1->Roll( 90. );
+			Data.AddObject( tube1 );
+			//
+			pos.Copy( branch2 );
+			pos.MoveRelative( 1000. );
+			Obstacle *tube2 = new Obstacle( "endor_tubes.obj", &tubes_obj, pos, "a big pipe" );
+			tube2->SnapTo( branch2 );
+			pos.Copy( tube2 );
+			Waypoints[ 1 ].push_back( pos - pos.Fwd * 400. );
+			Waypoints[ 1 ].push_back( pos );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd * 400. );
+			tube2->Yaw( 180. );
+			tube2->Roll( 180. );
+			Data.AddObject( tube2 );
+			
+			// Pipes to cover gaps.
+			Obstacle *pipe = new Obstacle( "endor_pipe.obj", &pipe_obj, *tube1 + tube1->Up * -28. - tube1->Fwd * tube1->Shape.GetLength() * 0.5 );
+			pipe->ScaleTo( 10., 10., tube1->Shape.GetWidth() );
+			pipe->Roll( 30. );
+			Data.AddObject( pipe );
+			pipe = new Obstacle( pipe );
+			pipe->Roll( 90. );
+			pipe->MoveAlong( &(tube1->Up), 28. );
+			pipe->MoveAlong( &(tube1->Right), 30. );
+			pipe->MoveAlong( &(tube1->Fwd), -5. );
+			Data.AddObject( pipe );
+			pipe = new Obstacle( pipe );
+			pipe->MoveAlong( &(tube1->Right), -60. );
+			Data.AddObject( pipe );
+			
+			// Ceiling pipes in tube rooms.
+			pipe = new Obstacle( "endor_pipes.obj", &pipes_obj, *tube1 + tube1->Up * 45. + tube1->Right * 45., "some pipes" );
+			pipe->ScaleTo( 30., 20., tube1->Shape.GetLength() );
+			pipe->Yaw( 90. );
+			pipe->Pitch( -45. );
+			Data.AddObject( pipe );
+			pipe = new Obstacle( "endor_pipes.obj", &pipes_obj, *tube2 + tube2->Up * 45. + tube2->Right * 45., "some pipes" );
+			pipe->ScaleTo( 30., 20., tube2->Shape.GetLength() );
+			pipe->Yaw( 90. );
+			pipe->Pitch( -45. );
+			Data.AddObject( pipe );
+			
+			pos.Copy( tube1 );
+			pos.Yaw( 180. );
+			pos.MoveRelative( 1000. );
+			branch1_turn = new Obstacle( "endor_turn.obj", &turn_obj, pos, "the corner" );
+			branch1_turn->Roll( 240. );
+			branch1_turn->Yaw( 15. );
+			branch1_turn->SnapTo( tube1 );
+			pos.Copy( tube1 );
+			Waypoints[ 0 ].push_back( pos );
+			Data.AddObject( branch1_turn );
+			//
+			pos.Copy( tube2 );
+			pos.Yaw( 180. );
+			pos.MoveRelative( 1000. );
+			branch2_turn = new Obstacle( "endor_turn.obj", &turn_obj, pos, "the corner" );
+			branch2_turn->Roll( 210. );
+			branch2_turn->Yaw( 15. );
+			branch2_turn->SnapTo( tube2 );
+			pos.Copy( tube1 );
+			Waypoints[ 1 ].push_back( pos );
+			Data.AddObject( branch2_turn );
+			
+			pos.Copy( branch1_turn );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			pos.Roll( 90. );
+			pos.Pitch( 45. );
+			pos.MoveRelative( 300. );
+			branch1 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch1->ScaleTo( 445.76, 50., 50. );
+			branch1->SnapTo( branch1_turn );
+			Data.AddObject( branch1 );
+			//
+			pos.Copy( branch2_turn );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			pos.Roll( 90. );
+			pos.Pitch( 45. );
+			pos.MoveRelative( 300. );
+			branch2 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch2->ScaleTo( 445.76, 50., 50. );
+			branch2->SnapTo( branch2_turn );
+			Data.AddObject( branch2 );
+			
+			// Side exits.
+			Obstacle *prev = branch1;
+			pos.Copy( prev );
+			Waypoints[ 0 ].push_back( pos );
+			pos.MoveRelative( 500. );
+			branch1 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch1->Roll( 9. );
+			branch1->ScaleTo( 445.76, 50., 50. );
+			branch1->SnapTo( prev );
+			prev->Roll( 180. );
+			Data.AddObject( branch1 );
+			pos.Copy( branch1 );
+			Waypoints[ 0 ].push_back( pos );
+			pos.MoveAlong( &(pos.Fwd), branch1->Shape.GetLength() * 0.5 );
+			exits[ branch1 ] = pos;
+			Waypoints[ 0 ].push_back( pos );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd * 250. );
+			Waypoints[ 0 ].push_back( pos + pos.Fwd * 500. );
+			//
+			prev = branch2;
+			pos.Copy( prev );
+			Waypoints[ 1 ].push_back( pos );
+			pos.MoveRelative( 500. );
+			branch2 = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch2->Roll( -9. );
+			branch2->ScaleTo( 445.76, 50., 50. );
+			branch2->SnapTo( prev );
+			prev->Roll( 180. );
+			Data.AddObject( branch2 );
+			pos.Copy( branch2 );
+			Waypoints[ 1 ].push_back( pos );
+			pos.MoveAlong( &(pos.Fwd), branch2->Shape.GetLength() * 0.5 );
+			exits[ branch2 ] = pos;
+			Waypoints[ 1 ].push_back( pos );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd * 250. );
+			Waypoints[ 1 ].push_back( pos + pos.Fwd * 500. );
+			
+			// Inside
+			
+			pos.Copy( branch1_in );
+			Waypoints[ 2 ].push_back( pos );
+			pos.MoveRelative( 300. );
+			branch1_turn = new Obstacle( "endor_turn.obj", &turn_obj, pos, "the corner" );
+			branch1_turn->Roll( 180. );
+			branch1_turn->SnapTo( branch1_in );
+			Data.AddObject( branch1_turn );
+			//
+			pos.Copy( branch2_in );
+			Waypoints[ 3 ].push_back( pos );
+			pos.MoveRelative( 300. );
+			branch2_turn = new Obstacle( "endor_turn.obj", &turn_obj, pos, "the corner" );
+			branch2_turn->SnapTo( branch2_in );
+			Data.AddObject( branch2_turn );
+			
+			pos.Copy( branch1_turn );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd * -50. + pos.Right *   7. );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd *  21. + pos.Right *  21. );
+			pos.Roll( 180. );
+			pos.Yaw( -45. );
+			pos.MoveRelative( 300. );
+			branch1_in = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch1_in->ScaleTo( 406.6, 50., 50. );
+			branch1_in->SnapTo( branch1_turn );
+			Data.AddObject( branch1_in );
+			//
+			pos.Copy( branch2_turn );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd * -50. + pos.Right *  7. );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd *  21. + pos.Right * 21. );
+			pos.Yaw( 45. );
+			pos.MoveRelative( 300. );
+			branch2_in = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch2_in->ScaleTo( 406.6, 50., 50. );
+			branch2_in->SnapTo( branch2_turn );
+			Data.AddObject( branch2_in );
+			
+			prev = branch1_in;
+			pos.Copy( prev );
+			Waypoints[ 2 ].push_back( pos );
+			pos.MoveRelative( 500. );
+			branch1_in = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch1_in->Roll( -30. );
+			branch1_in->ScaleTo( 406.6, 50., 50. );
+			branch1_in->SnapTo( prev );
+			prev->Roll( 180. );
+			Data.AddObject( branch1_in );
+			//
+			prev = branch2_in;
+			pos.Copy( prev );
+			Waypoints[ 3 ].push_back( pos );
+			pos.MoveRelative( 500. );
+			branch2_in = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch2_in->Roll( 30. );
+			branch2_in->ScaleTo( 406.6, 50., 50. );
+			branch2_in->SnapTo( prev );
+			prev->Roll( 180. );
+			Data.AddObject( branch2_in );
+			
+			prev = branch1_in;
+			pos.Copy( prev );
+			Waypoints[ 2 ].push_back( pos );
+			pos.MoveRelative( 500. );
+			branch1_in = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch1_in->ScaleTo( 406.6, 50., 50. );
+			branch1_in->SnapTo( prev );
+			prev->Roll( 90. );
+			Data.AddObject( branch1_in );
+			pos.Copy( branch1_in );
+			Waypoints[ 2 ].push_back( pos );
+			Waypoints[ 2 ].push_back( pos + branch1_in->Fwd * (branch1_in->Shape.GetLength() * 0.5 + 15.) );
+			//
+			prev = branch2_in;
+			pos.Copy( prev );
+			Waypoints[ 3 ].push_back( pos );
+			pos.MoveRelative( 500. );
+			branch2_in = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			branch2_in->ScaleTo( 406.6, 50., 50. );
+			branch2_in->SnapTo( prev );
+			prev->Roll( -90. );
+			Data.AddObject( branch2_in );
+			pos.Copy( branch2_in );
+			Waypoints[ 3 ].push_back( pos );
+			Waypoints[ 3 ].push_back( pos + branch2_in->Fwd * (branch2_in->Shape.GetLength() * 0.5 + 15.) );
+			
+			// Inside tunnels merge.
+			pos.SetPos( (branch1_in->X + branch2_in->X) * 0.5, (branch1_in->Y + branch2_in->Y) * 0.5, (branch1_in->Z + branch2_in->Z) * 0.5 );
+			pos.SetFwdVec( (branch1_in->Fwd.X + branch2_in->Fwd.X) * 0.5, (branch1_in->Fwd.Y + branch2_in->Fwd.Y) * 0.5, (branch1_in->Fwd.Z + branch2_in->Fwd.Z) * 0.5 );
+			pos.MoveAlong( &(pos.Fwd), branch1_in->Shape.GetLength() * 0.5 + room_obj.GetLength() * 0.5 - 6. );
+			Obstacle *room = new Obstacle( "endor_room.obj", &room_obj, pos, "the wall" );
+			pos.Copy( room );
+			room->Yaw( 180. );
+			Data.AddObject( room );
+			
+			// Randomized pipes in central path.
+			/*
+			Data.AddObject( new Obstacle( "endor_pipe.obj",  &pipe_obj,  *room + pos.Up *  40. + pos.Fwd * -310., "a pipe" ) );
+			Data.AddObject( new Obstacle( "endor_pipes.obj", &pipes_obj, *room + pos.Up * -45. + pos.Fwd * -310., "some pipes" ) );
+			Data.AddObject( new Obstacle( "endor_pipes.obj", &pipes_obj, *room + pos.Up *  45. + pos.Fwd * -165., "some pipes" ) );
+			Data.AddObject( new Obstacle( "endor_pipe.obj",  &pipe_obj,  *room + pos.Up * -25. + pos.Fwd *  -20., "a pipe" ) );
+			Data.AddObject( new Obstacle( "endor_pipe.obj",  &pipe_obj,  *room + pos.Up *  25. + pos.Fwd *   20., "a pipe" ) );
+			Data.AddObject( new Obstacle( "endor_pipes.obj", &pipes_obj, *room + pos.Up * -45. + pos.Fwd *  165., "some pipes" ) );
+			Data.AddObject( new Obstacle( "endor_pipes.obj", &pipes_obj, *room + pos.Up *  50. + pos.Fwd *  310., "some pipes" ) );
+			*/
+			double room_l = room->Shape.GetLength(), room_w = room->Shape.GetWidth(), room_h = room->Shape.GetHeight();
+			double prev_u = 0., prev_r = 0.;
+			for( double f = room_l * -0.4; f <= room_l * 0.44; f += Rand::Double( 90., 110. ) )
+			{
+				double u = Rand::Double( room_h * -0.2, room_h * 0.2 ) * (0.9 - fabs(f/room_l));
+				double r = Rand::Double( room_w * -0.4, room_w * 0.4 ) * (0.7 - fabs(f/room_l));
+				
+				// Prevent too many abrupt direction shifts.
+				if( ((u * prev_u) < 0.) && ((r * prev_r) < 0.) )  // Both changed from positive to negative (or vice versa).
+				{
+					if( (r - prev_r) > (u - prev_u) )
+						r *= -1.;
+					else
+						u *= -1.;
+				}
+				
+				if( prev_u || prev_r )
+				{
+					Waypoints[ 2 ].push_back( pos + pos.Fwd * (f - 50.) + pos.Up * 0.5 * (u + prev_u + Rand::Double(-1.,1.)) + pos.Right * 0.5 * (r + prev_r + Rand::Double(-1.5,1.5)) );
+					Waypoints[ 3 ].push_back( pos + pos.Fwd * (f - 50.) + pos.Up * 0.5 * (u + prev_u + Rand::Double(-1.,1.)) + pos.Right * 0.5 * (r + prev_r + Rand::Double(-1.5,1.5)) );
+				}
+				Waypoints[ 2 ].push_back( pos + pos.Fwd * f + pos.Up * (u + Rand::Double(-1.,1.)) + pos.Right * (r + Rand::Double(-1.5,1.5)) );
+				Waypoints[ 3 ].push_back( pos + pos.Fwd * f + pos.Up * (u + Rand::Double(-1.,1.)) + pos.Right * (r + Rand::Double(-1.5,1.5)) );
+				
+				if( Rand::Bool(0.4) )
+				{
+					// Horizontal pipes above/below path.
+					
+					if( Rand::Bool(0.6) )
+						Data.AddObject( new Obstacle( "endor_pipes.obj", &pipes_obj, pos + pos.Fwd * f + pos.Up * (u + 50.), "some pipes" ) );
+					else
+						Data.AddObject( new Obstacle( "endor_pipe.obj", &pipe_obj, pos + pos.Fwd * f + pos.Up * (u + 35.), "a pipe" ) );
+					
+					if( Rand::Bool(0.6) )
+						Data.AddObject( new Obstacle( "endor_pipes.obj", &pipes_obj, pos + pos.Fwd * f + pos.Up * (u - 50.), "some pipes" ) );
+					else
+						Data.AddObject( new Obstacle( "endor_pipe.obj", &pipe_obj, pos + pos.Fwd * f + pos.Up * (u - 35.), "a pipe" ) );
+					
+					double u2 = (u >= 0.) ? (u - 75.) : (u + 75.);
+					if( Rand::Bool(0.7) )
+						pipe = new Obstacle( "endor_pipes.obj", &pipes_obj, pos + pos.Fwd * f + pos.Up * u2 * 1.1, "some pipes" );
+					else
+						pipe = new Obstacle( "endor_pipe.obj", &pipe_obj, pos + pos.Fwd * f + pos.Up * u2, "a pipe" );
+					pipe->ScaleBy( 0.75f, 0.75f, 1.f );
+					Data.AddObject( pipe );
+				}
+				else
+				{
+					// Vertical pipes to the left and right.
+					
+					if( Rand::Bool(0.4) )
+						pipe = new Obstacle( "endor_pipes.obj", &pipes_obj, pos + pos.Fwd * f + pos.Right * (r + 60.), "some pipes" );
+					else
+						pipe = new Obstacle( "endor_pipe.obj", &pipe_obj, pos + pos.Fwd * f + pos.Right * (r + 55.), "a pipe" );
+					pipe->Roll( 90. );
+					Data.AddObject( pipe );
+					
+					if( Rand::Bool(0.4) )
+						pipe = new Obstacle( "endor_pipes.obj", &pipes_obj, pos + pos.Fwd * f + pos.Right * (r - 60.), "some pipes" );
+					else
+						pipe = new Obstacle( "endor_pipe.obj", &pipe_obj, pos + pos.Fwd * f + pos.Right * (r - 55.), "a pipe" );
+					pipe->Roll( 90. );
+					Data.AddObject( pipe );
+					
+					double r2 = (r >= 0.) ? (r - 100.) : (r + 100.);
+					if( Rand::Bool(0.6) )
+						pipe = new Obstacle( "endor_pipes.obj", &pipes_obj, pos + pos.Fwd * f + pos.Right * r2 * 1.1, "some pipes" );
+					else
+						pipe = new Obstacle( "endor_pipe.obj", &pipe_obj, pos + pos.Fwd * f + pos.Right * r2, "a pipe" );
+					pipe->ScaleBy( 1.25f, 1.25f, 1.f );
+					pipe->Roll( 90. );
+					Data.AddObject( pipe );
+				}
+				
+				prev_u = u;
+				prev_r = r;
+			}
+			
+			// Center exit.
+			pos.Copy( room );
+			pos.Yaw( 180. );
+			pos.MoveRelative( room->Shape.GetLength() * 0.5 + turn_obj.GetLength() * 0.5 );
+			Obstacle *turn = new Obstacle( "endor_turn.obj", &turn_obj, pos, "the corner" );
+			turn->SnapTo( room );
+			turn->MoveAlong( &(room->Up), 14.5 );
+			turn->MoveAlong( &(room->Fwd), 9.5 );
+			pos.Copy( turn );
+			Waypoints[ 2 ].push_back( pos );
+			Waypoints[ 3 ].push_back( pos );
+			turn->Roll( -90. );
+			turn->Yaw( 20. );
+			Data.AddObject( turn );
+			pos.Pitch( 55. );
+			pos.MoveRelative( turn->Shape.GetLength() * 0.5 + tunnel_obj.GetLength() * 0.5 );
+			tunnel = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			tunnel->ScaleTo( 348.5, 50., 50. );
+			tunnel->SnapTo( turn );
+			Data.AddObject( tunnel );
+			pos.Copy( tunnel );
+			Waypoints[ 2 ].push_back( pos );
+			Waypoints[ 3 ].push_back( pos );
+			pos.MoveRelative( tunnel->Shape.GetLength() );
+			prev = tunnel;
+			tunnel = new Obstacle( "endor_tunnel.obj", &tunnel_obj, pos, "the tunnel" );
+			tunnel->ScaleTo( 348.5, 50., 50. );
+			tunnel->SnapTo( prev );
+			prev->Roll( 180. );
+			Data.AddObject( tunnel );
+			pos.Copy( tunnel );
+			Waypoints[ 2 ].push_back( pos );
+			Waypoints[ 3 ].push_back( pos );
+			pos.MoveAlong( &(pos.Fwd), tunnel->Shape.GetLength() * 0.5 );
+			exits[ tunnel ] = pos;
+			Waypoints[ 2 ].push_back( pos );
+			Waypoints[ 3 ].push_back( pos );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd * 250. );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd * 250. );
+			Waypoints[ 2 ].push_back( pos + pos.Fwd * 500. );
+			Waypoints[ 3 ].push_back( pos + pos.Fwd * 500. );
+			
+			// Surface plates to cover the trench.
+			DeathStarBox *plate1 = new DeathStarBox( *deathstar + deathstar->Up * -62.5 + deathstar->Fwd * -1808., 10000., 125., deathstar->TrenchWidth );
+			Data.AddObject( plate1 );
+			DeathStarBox *plate2 = new DeathStarBox( *plate1 + plate1->Fwd * plate1->L, plate1->L, plate1->H, plate1->W );
+			Data.AddObject( plate2 );
+			Data.AddObject( new DeathStarBox( *plate2 + plate2->Fwd * (plate2->L * 0.5 + plate2->H * 0.5) - plate2->Up * (deathstar->TrenchDepth * 0.5 - 62.5), plate2->H, deathstar->TrenchDepth, plate2->W ) );
+			DeathStarBox *plate3 = new DeathStarBox( *plate1 - plate1->Fwd * (plate1->L + 1286.), plate1->L, plate1->H, plate1->W );
+			Data.AddObject( plate3 );
+			DeathStarBox *plate4 = new DeathStarBox( *plate3 - plate3->Fwd * plate3->L, plate3->L, plate3->H, plate3->W );
+			Data.AddObject( plate4 );
+			Data.AddObject( new DeathStarBox( *plate4 - plate4->Fwd * (plate4->L * 0.5 + plate4->H * 0.5) - plate4->Up * (deathstar->TrenchDepth * 0.5 - 62.5), plate4->H, deathstar->TrenchDepth, plate4->W ) );
+			
+			// Smaller plates to cover the gaps.
+			double gap = plate3->Dist( plate1 ) - plate1->L;
+			DeathStarBox *plate_c = new DeathStarBox( *plate1 - plate1->Fwd * (plate1->L * 0.5 + gap * 0.5 - 28.), gap - 56., plate1->H, 1040. );
+			Data.AddObject( plate_c );
+			double side_w = (deathstar->TrenchWidth - (plate_c->W + 112.)) * 0.5;
+			Data.AddObject( new DeathStarBox( *plate_c - plate_c->Fwd * 28. + plate_c->Right * (plate_c->W * 0.5 + side_w * 0.5 + 56.), plate_c->L + 56., plate_c->H, side_w ) );
+			Data.AddObject( new DeathStarBox( *plate_c - plate_c->Fwd * 28. - plate_c->Right * (plate_c->W * 0.5 + side_w * 0.5 + 56.), plate_c->L + 56., plate_c->H, side_w ) );
+			Data.AddObject( new DeathStarBox( *plate_c - plate_c->Fwd * 56. + plate_c->Right * (plate_c->W * 0.5 + 28.), plate_c->L, plate_c->H, 56. ) );
+			Data.AddObject( new DeathStarBox( *plate_c - plate_c->Fwd * 56. - plate_c->Right * (plate_c->W * 0.5 + 28.), plate_c->L, plate_c->H, 56. ) );
+			Data.AddObject( new DeathStarBox( *plate_c - plate_c->Fwd * (plate_c->L * 0.5 + 28.) - plate_c->Right * (plate_c->W * 0.25 + 11.), 56., plate_c->H, plate_c->W * 0.5 - 22. ) );
+			Data.AddObject( new DeathStarBox( *plate_c - plate_c->Fwd * (plate_c->L * 0.5 + 28.) + plate_c->Right * (plate_c->W * 0.25 + 15.), 56., plate_c->H, plate_c->W * 0.5 - 30. ) );
+			
+			// Exits.
+			for( std::map<Obstacle*,Pos3D>::iterator exit_iter = exits.begin(); exit_iter != exits.end(); exit_iter ++ )
+			{
+				exit_iter->second.Fwd   = deathstar->Fwd;
+				exit_iter->second.Up    = deathstar->Up;
+				exit_iter->second.Right = deathstar->Right;
+				Obstacle *exit = new Obstacle( "endor_exit.obj", &exit_obj, exit_iter->second + exit_obj.GetHeight() * 0.5, "the grating" );
+				exit->SnapTo( exit_iter->first );
+				//exit->MoveAlong( &(deathstar->Up), exit->DistAlong( &(deathstar->Up), deathstar ) * -1. );
+				Data.AddObject( exit );
+			}
+			
+			// Surface turrets.
+			int endor_turrets = Data.PropertyAsInt( "endor_turrets", 40 );
+			for( int turret_num = 0; turret_num <= endor_turrets; turret_num ++ )
+			{
+				DeathStarBox *box = new DeathStarBox();
+				box->Copy( plate_c );
+				box->W = 11.;
+				box->L = 11.;
+				box->H = Rand::Double( 10., 80. );
+				box->MoveAlong( &(deathstar->Up), (plate_c->H + box->H) / 2. );
+				box->MoveAlong( &(deathstar->Fwd), Rand::Double( -3000., 3000. ) );
+				box->MoveAlong( &(deathstar->Right), Rand::Double( -3000., 3000. ) );
+				for( std::map<Obstacle*,Pos3D>::iterator exit_iter = exits.begin(); exit_iter != exits.end(); exit_iter ++ )
+				{
+					// Make sure the turret isn't blocking a tunnel entrance.
+					if( exit_iter->second.Dist(box) < 200. )
+						box->MoveAlong( &(deathstar->Fwd), 2000. );
+				}
+				Data.AddObject( box );
+				
+				Turret *turret = new Turret();
+				turret->Team = XWing::Team::EMPIRE;
+				turret->Copy( box );
+				turret->MoveAlong( &(box->Up), box->H / 2. );
+				turret->MinGunPitch = -5.;
+				turret->SingleShotDelay = 0.5 - (ai_skill - 1) * 0.05;
+				turret->AimAhead = 1.5f;
+				Data.AddObject( turret );
+			}
+			
+			int force_path = Data.PropertyAsInt( "force_path", -1, -1 );
+			for( size_t i = 0; i < Waypoints.size(); i ++ )
+			{
+				if( (force_path >= 0) && ((int)i != force_path) )
+				{
+					Waypoints[ i ].clear();
+					continue;
+				}
+				
+				// Waypoint lists were constructed from the core outward, but the ships need to fly inward.
+				std::reverse( Waypoints[ i ].begin(), Waypoints[ i ].end() );
+				
+				// Slightly randomize waypoints so overlapping paths differ, and point forward vectors towards the next waypoint.
+				for( size_t j = 1; j < Waypoints[ i ].size(); j ++ )
+				{
+					Waypoints[ i ][ j ].X += Rand::Double( -1., 1. );
+					Waypoints[ i ][ j ].Y += Rand::Double( -1., 1. );
+					Waypoints[ i ][ j ].Z += Rand::Double( -1., 1. );
+					Waypoints[ i ][ j - 1 ].SetFwdPt( Waypoints[ i ][ j ].X, Waypoints[ i ][ j ].Y, Waypoints[ i ][ j ].Z );
+					Waypoints[ i ][ j ].SetFwdVec( Waypoints[ i ][ j - 1 ].Fwd.X, Waypoints[ i ][ j - 1 ].Fwd.Y, Waypoints[ i ][ j - 1 ].Fwd.Z );
+				}
+				
+				// Add waypoints leading into tunnel entrances.
+				Pos3D entry = Waypoints[ i ].front();
+				entry.MoveAlong( &(entry.Fwd), -500. );
+				Waypoints[ i ].insert( Waypoints[ i ].begin(), entry );
+				entry.MoveAlong( &(entry.Fwd), -500. );
+				Waypoints[ i ].insert( Waypoints[ i ].begin(), entry );
+				entry.MoveAlong( &(entry.Fwd), -500. );
+				Waypoints[ i ].insert( Waypoints[ i ].begin(), entry );
+				entry.Fwd = deathstar->Fwd * -1.;
+				entry.FixVectors();
+				entry.MoveAlong( &(entry.Fwd), -500. );
+				Waypoints[ i ].insert( Waypoints[ i ].begin(), entry );
+				
+				if( sv_debug )
+				{
+					// In debug mode, add copies of waypoints as checkpoints to show AI paths on radar.
+					Checkpoint *prev_waypoint = NULL;
+					for( size_t j = 0; j < Waypoints[ i ].size(); j ++ )
+					{
+						Checkpoint *visible_waypoint = new Checkpoint( Waypoints[ i ][ j ].X, Waypoints[ i ][ j ].Y, Waypoints[ i ][ j ].Z );
+						Data.AddObject( visible_waypoint );
+						if( prev_waypoint )
+							prev_waypoint->Next = visible_waypoint->ID;
+					}
+				}
+			}
+			
+			Turret *superlaser = new Turret();
+			superlaser->Team = XWing::Team::EMPIRE;
+			superlaser->Weapon = Shot::TYPE_SUPERLASER;
+			superlaser->FiringMode = 1;
+			superlaser->CanBeHit = false;
+			superlaser->Visible = false;
+			superlaser->MaxFiringDist = 7777777.;
+			superlaser->SingleShotDelay = Rand::Double( 42., 48. );
+			superlaser->AimAhead = 0.;
+			superlaser->YawSpeed = 59.;
+			superlaser->PitchSpeed = 255.;
+			superlaser->Copy( deathstar );
+			superlaser->MoveAlong( &(deathstar->Right), deathstar->TrenchWidth * 1.5 );
+			superlaser->MoveAlong( &(deathstar->Fwd),   deathstar->TrenchWidth * 1.5 );
+			Data.AddObject( superlaser );
+			
+			int rebel_fleet = Data.PropertyAsInt( "endor_rebel_fleet", 15, 15 );
+			int empire_fleet = Data.PropertyAsInt( "endor_empire_fleet", 7 );
+			const ShipClass *crv = GetShipClass("CRV"), *frg = GetShipClass("FRG"), *crs = GetShipClass("CRS"), *isd = GetShipClass("ISD"), *vsd = GetShipClass("VSD");
+			for( int i = 0; i < rebel_fleet; i ++ )
+			{
+				Ship *ship = SpawnShip( (i % 5 <= 1) ? frg : ((i % 5 == 3) ? crs : crv), XWing::Team::REBEL );
+				ship->Name = std::string("Rebel ") + ship->Class->Squadron;
+				ship->IsMissionObjective = true;
+				ship->SetPos( i * 400., Rand::Double( -5000., 5000. ), Rand::Double( 2000., 4000. ) );
+				ship->Yaw( 180. );
+			}
+			for( int i = 0; i < empire_fleet; i ++ )
+			{
+				Ship *ship = SpawnShip( (i % 4 == 2) ? vsd : isd, XWing::Team::EMPIRE );
+				ship->Name = ship->Class->LongName;
+				ship->SetPos( i * -500. - 7000., Rand::Double( -9000., 9000. ), Rand::Double( 4000., 8000. ) );
 			}
 		}
 		else
@@ -6824,7 +7961,7 @@ void XWingServer::BeginFlying( uint16_t player_id, bool respawn )
 		double ai_empire_ratio = Data.PropertyAsDouble( "ai_empire_ratio", 1. );
 		double ai_fighter_ratio = Data.PropertyAsInt( "ai_fighter_ratio", 2. );
 		
-		bool rebel_use_bombers  = (GameType == XWing::GameType::FLEET_BATTLE) || ((GameType == XWing::GameType::CAPITAL_SHIP_HUNT) && (DefendingTeam == XWing::Team::EMPIRE)) || (GameType == XWing::GameType::BATTLE_OF_YAVIN);
+		bool rebel_use_bombers  = (GameType == XWing::GameType::FLEET_BATTLE) || ((GameType == XWing::GameType::CAPITAL_SHIP_HUNT) && (DefendingTeam == XWing::Team::EMPIRE)) || (GameType == XWing::GameType::BATTLE_OF_ENDOR) || (GameType == XWing::GameType::BATTLE_OF_YAVIN);
 		bool empire_use_bombers = (GameType == XWing::GameType::FLEET_BATTLE) || ((GameType == XWing::GameType::CAPITAL_SHIP_HUNT) && (DefendingTeam == XWing::Team::REBEL));
 		
 		const ShipClass *rebel_fighter_class  = GetShipClass(Data.PropertyAsString(prefix+std::string("rebel_fighter")));
@@ -6943,6 +8080,19 @@ void XWingServer::BeginFlying( uint16_t player_id, bool respawn )
 					ship->Z = Rand::Double( 100., 1000. );
 					ship->SetFwdVec( 1., 0., 0. );
 				}
+				/*
+				else if( GameType == XWing::GameType::BATTLE_OF_ENDOR )
+				{
+					// FIXME: AI spawn locations.
+					double wave_dist = rebel ? 100. : (Respawn ? 4000. : 1000.);
+					if( Data.HasProperty("wave_dist") || (Data.HasProperty("rebel_wave_dist") && rebel) || (Data.HasProperty("empire_wave_dist") && ! rebel) )
+						wave_dist = rebel ? rebel_wave_dist : empire_wave_dist;
+					ship->X = Rand::Double( -150., 150. ) + (rebel ? 2000. : -2000.) + wave * wave_dist * (rebel ? 1. : -1.);
+					ship->Y = Rand::Double( -200., 200. ) * (wave + 1);
+					ship->Z = Rand::Double( 100., 1000. );
+					ship->SetFwdVec( (rebel ? -1. : 1.), 0., 0. );
+				}
+				*/
 				else if( GameType == XWing::GameType::FLEET_BATTLE )
 				{
 					double wave_dist = Respawn ? 500. : 4000.;
@@ -7243,6 +8393,15 @@ void XWingServer::BeginFlying( uint16_t player_id, bool respawn )
 						ship->SetUpVec( 0., 0., 1. );
 						ship->SetFwdVec( 1., 0., 0. );
 					}
+					/*
+					else if( GameType == XWing::GameType::BATTLE_OF_ENDOR )
+					{
+						// FIXME: Late-join player spawn locations.
+						ship->SetPos( Rand::Double(-500.,500.) + (rebel ? 1000. : -3000.), Rand::Double(-500.,500.), Rand::Double(0.,1000.) );
+						ship->SetUpVec( 0., 0., 1. );
+						ship->SetFwdVec( (rebel ? -1. : 1.), 0., 0. );
+					}
+					*/
 					else
 					{
 						ship->X = Rand::Double(-500.,500.) + (rebel ? 1500. : -1500.);

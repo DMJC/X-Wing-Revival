@@ -47,6 +47,9 @@ public:
 	double X, Y, Z, FwdX, FwdY, FwdZ;
 	uint8_t SpawnGroup, SpawnFlags;
 	
+	std::string SpawnClientObj, SpawnServerObj;
+	double ObjL, ObjH, ObjW;
+	
 	std::vector<std::string> JumpOut;
 	
 	std::string PropertyName, PropertyValue;

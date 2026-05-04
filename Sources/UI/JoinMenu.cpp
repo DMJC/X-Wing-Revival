@@ -177,6 +177,8 @@ void JoinMenu::Draw( void )
 						text += " [FFA DM]";
 					else if( properties["gametype"] == "yavin" )
 						text += " [Yavin]";
+					else if( properties["gametype"] == "endor" )
+						text += " [Endor]";
 					else if( properties["gametype"] == "hunt" )
 						text += " [Flagship Hunt]";
 					else if( properties["gametype"] == "fleet" )
@@ -185,6 +187,8 @@ void JoinMenu::Draw( void )
 						text += " [Team Kessel]";
 					else if( properties["gametype"] == "ffa_race" )
 						text += " [FFA Kessel]";
+					else if( properties["gametype"] == "ctf" )
+						text += " [CTF]";
 					else if( properties["gametype"] == "mission" )
 					{
 						if( ! properties["mission_name"].empty() )

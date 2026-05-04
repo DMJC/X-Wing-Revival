@@ -1,6 +1,6 @@
 -------------------------------------------
 |              X-Wing Revival             |
-|         0.5.5 Alpha (2025-12-31)        |
+|          0.6 Alpha (2026-05-04)         |
 |  https://raptor007.com/x-wing-revival/  |
 |    Code by Raptor007 (Blair Sherman)    |
 |       Ship models by XWA Upgrade:       |
@@ -158,6 +158,8 @@ MacOS says the application "X-Wing Revival.app" cannot be opened.
     Trilinear mode is the standard non-anisotropic mode.  Linear mode uses bilinear
     filtering without mipmapping, which looks sharp but sparkles at longer distances.
 
+  Glow: Use glow-mapping texture layer for self-illuminated pixels.  Requires shaders.
+
   Shaders: Use GLSL vertex and fragment shaders instead of old fixed-pipeline OpenGL.
     Recommended for performance and better appearance, but a few old motherboards may
     perform better with this off, and some ancient video cards require this off.
@@ -263,7 +265,7 @@ MacOS says the application "X-Wing Revival.app" cannot be opened.
 
   Output Channels: Stereo, quadraphonic, or 5.1/7.1 surround.  Default: Stereo
 
-  Sample Depth: 16-bit/24-bit integer or 32-bit floating point.  Default: Float
+  Sample Depth: 8-bit unsigned or 16-bit/32-bit signed integer.  Default: 32-bit
 
   Rate: Samples per second.  Default: 44.1KHz
 
@@ -603,6 +605,10 @@ When playing in VR, there's no radar yet, so pick up your visual scanning!  Mess
 won't display by default, but you can show them by pressing return to toggle chat or
 holding tab to show scores.
 
+SteamVR now enables Motion Smoothing by default, and this can cause some geometry to
+distort while moving your head or turning your ship.  On my PC, I ended up turning
+this setting off in SteamVR.  Try it both ways to see which you prefer.
+
 
 == ABOUT THE SCREENSAVER ==
 
@@ -619,6 +625,21 @@ console commands to execute, such as "sv gametype yavin" or "sv rebel_fighter A/
 
 
 == VERSION HISTORY ==
+
+Alpha 0.6 (2026-05-04):
+ * New gametype: Battle of Endor!  Fly the tunnels to destroy the reactor.
+ * Ion cannons can disable engines of heavily damaged ships.
+ * Turbolaser shots travel a bit faster.  Minor tweaks to shot graphics.
+ * Tweaked explosion graphics; chunks of ship now break off gradually.
+ * Added glow-mapping for improved lighting on terrain, ships, and cockpits.
+ * Improved VR performance by caching dynamic lights between eye renders.
+ * Improved server performance of Victory S.D. by optimizing collision model.
+ * Fixed audio panning in SDL2 by removing floating-point output mode.
+ * Fixed stored targets being re-selectable after the target jumped out.
+ * Fixed deathmatch sometimes respawning ships too close to asteroids.
+ * Fixed AI ships shooting down their own missiles.
+ * Fixed AI teammates defeating the Death Star on their own at Jedi skill.
+ * Fixed Windows XP compatibility in Legacy exe.
 
 Alpha 0.5.5 (2025-12-31):
  * Missiles and torpedoes track less aggressively, and can now be shot down!

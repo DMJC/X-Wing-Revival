@@ -149,25 +149,21 @@ void CampaignMenuTeamButton::Draw( void )
 		Raptor::Game->ShaderMgr.Set3f( "DirectionalLight1Dir", dir.X, dir.Y, dir.Z );
 		Raptor::Game->ShaderMgr.Set3f( "DirectionalLight1Color", 0.5, 0.375, 0.75 );
 		Raptor::Game->ShaderMgr.Set1f( "DirectionalLight1WrapAround", 0.5 );
-		bool bright = Enabled;
-		if( ! MouseIsWithin )
-		{
-			if( (Team == XWing::Team::EMPIRE) && (Raptor::Game->Cfg.SettingAsString("empire_mission") == "empire0") )
-				bright = false;
-			else if( (Team == XWing::Team::REBEL) && (Raptor::Game->Cfg.SettingAsString("rebel_mission") == "rebel0") )
-				bright = false;
-		}
+		double bright = Enabled ? std::max<double>( 0.75, PopOut ) : 0.;
+		if( ((Team == XWing::Team::EMPIRE) && (Raptor::Game->Cfg.SettingAsString("empire_mission") == "empire0"))
+		||  ((Team == XWing::Team::REBEL ) && (Raptor::Game->Cfg.SettingAsString("rebel_mission" ) == "rebel0" )) )
+			bright = PopOut;
 		if( bright )
 		{
 			dir.Set( -0.2, -0.8, 0.2 ); // Right Fwd Up
 			dir.ScaleTo( 1. );
 			Raptor::Game->ShaderMgr.Set3f( "DirectionalLight2Dir", dir.X, dir.Y, dir.Z );
-			Raptor::Game->ShaderMgr.Set3f( "DirectionalLight2Color", 1., 1., 1. );
+			Raptor::Game->ShaderMgr.Set3f( "DirectionalLight2Color", bright, bright, bright );
 			Raptor::Game->ShaderMgr.Set1f( "DirectionalLight2WrapAround", 0.5 );
 			dir.Set( -0.2, -0.8, 0.3 ); // Right Fwd Up
 			dir.ScaleTo( 1. );
 			Raptor::Game->ShaderMgr.Set3f( "DirectionalLight3Dir", dir.X, dir.Y, dir.Z );
-			Raptor::Game->ShaderMgr.Set3f( "DirectionalLight3Color", 0.5, 0.75, 1. );
+			Raptor::Game->ShaderMgr.Set3f( "DirectionalLight3Color", bright * 0.5, bright * 0.75, bright );
 			Raptor::Game->ShaderMgr.Set1f( "DirectionalLight3WrapAround", 0.25 );
 		}
 		else
@@ -185,13 +181,15 @@ void CampaignMenuTeamButton::Draw( void )
 	double frame_time = std::min<double>( 0.125, Raptor::Game->FrameTime );
 	if( hovering )
 	{
-		Rotation += frame_time * 90.;
-		if( Rotation > 360. )
-			Rotation -= 360.;
-		
 		PopOut += frame_time * 7.;
 		if( PopOut > 1. )
+		{
 			PopOut = 1.;
+			
+			Rotation += frame_time * 90.;
+			if( Rotation > 360. )
+				Rotation -= 360.;
+		}
 	}
 	else
 	{

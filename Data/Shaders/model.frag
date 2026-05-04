@@ -52,6 +52,10 @@ precision highp float;
 #define BUMP_SCALE BumpScale
 #endif
 
+#ifndef GLOW_SCALE
+#define GLOW_SCALE GlowScale
+#endif
+
 #ifndef AMBIENT_LIGHT
 #define AMBIENT_LIGHT AmbientLight
 #endif
@@ -176,6 +180,12 @@ uniform float BlastRadius[ BLASTPOINTS ];
 varying float BlastDarken;
 #endif
 
+#endif
+
+
+#if GLOWMAP
+uniform sampler2D GlowMap;
+uniform float GlowScale;
 #endif
 
 
@@ -305,6 +315,12 @@ void main( void )
 	#elif LIGHT_QUALITY
 		// Apply per-vertex interpolated color.
 		gl_FragColor.rgb *= Color;
+	#endif
+	
+	#if GLOWMAP
+		vec4 glow = texture2D( GlowMap, gl_TexCoord[0].st );
+		glow.a *= GLOW_SCALE;
+		gl_FragColor.rgb = gl_FragColor.rgb * (1.0 - glow.a) + glow.rgb * glow.a;
 	#endif
 	
 	// Apply material alpha.

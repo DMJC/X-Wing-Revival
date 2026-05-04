@@ -8,6 +8,7 @@
 #include "Str.h"
 #include "Num.h"
 #include "File.h"
+#include "Obstacle.h"
 #include <fstream>
 #include <algorithm>
 
@@ -287,11 +288,12 @@ bool Mission::Parse( std::vector<std::string> &lines )
 			}
 			else if( (var == "spawn") && args.size() )
 			{
-				std::string spawn_class, spawn_name, message;
+				std::string spawn_class, spawn_name, spawn_client_obj, spawn_server_obj, message;
 				bool auto_pos = true;
 				double x = 0., y = 0., z = 0.;
 				double fwd_x = 0., fwd_y = 0., fwd_z = 0.;
 				uint8_t spawn_group = 0, spawn_flags = 0x00;
+				double obj_l = 0., obj_h = 0., obj_w = 0.;
 				
 				while( args.size() )
 				{
@@ -357,9 +359,28 @@ bool Mission::Parse( std::vector<std::string> &lines )
 						message = args.at(0);
 						args.erase( args.begin() );
 					}
-					else if( spawn_class.empty() && ((XWingServer*)( Raptor::Server ))->GetShipClass(unmodified_var) )
+					else if( (subvar == "obj") && args.size() )
+					{
+						spawn_client_obj = spawn_server_obj = args.at(0);
+						args.erase( args.begin() );
+					}
+					else if( (subvar == "col") && args.size() )
+					{
+						spawn_server_obj = args.at(0);
+						args.erase( args.begin() );
+					}
+					else if( (subvar == "size") && (args.size() >= 3) )
+					{
+						obj_l = atof( args.at(0).c_str() );
+						obj_h = atof( args.at(1).c_str() );
+						obj_w = atof( args.at(2).c_str() );
+						args.erase( args.begin() );
+						args.erase( args.begin() );
+						args.erase( args.begin() );
+					}
+					else if( spawn_class.empty() && spawn_server_obj.empty() && ((XWingServer*)( Raptor::Server ))->GetShipClass(unmodified_var) )
 						spawn_class = unmodified_var;
-					else if( spawn_name.empty() && ! spawn_class.empty() )
+					else if( spawn_name.empty() && (spawn_class.length() || spawn_server_obj.length()) )
 						spawn_name = unmodified_var;
 				}
 				
@@ -389,6 +410,11 @@ bool Mission::Parse( std::vector<std::string> &lines )
 				Events.back().FwdY = fwd_y;
 				Events.back().FwdZ = fwd_z;
 				Events.back().Message = message;
+				Events.back().SpawnClientObj = spawn_client_obj;
+				Events.back().SpawnServerObj = spawn_server_obj;
+				Events.back().ObjL = obj_l;
+				Events.back().ObjH = obj_h;
+				Events.back().ObjW = obj_w;
 			}
 			else if( (var == "jump") && args.size() )
 			{
@@ -448,6 +474,7 @@ MissionEvent::MissionEvent( uint8_t trigger, uint32_t trigger_flags, double time
 	X = Y = Z = FwdX = FwdY = FwdZ = 0.;
 	SpawnGroup = 0;
 	SpawnFlags = 0;
+	ObjL = ObjH = ObjW = 0.;
 	
 	Triggered = Used = 0;
 	GoTime = 0.;
@@ -482,6 +509,12 @@ MissionEvent::MissionEvent( const MissionEvent &other )
 	FwdX = other.FwdX;
 	FwdY = other.FwdY;
 	FwdZ = other.FwdZ;
+	
+	SpawnClientObj = other.SpawnClientObj;
+	SpawnServerObj = other.SpawnServerObj;
+	ObjL = other.ObjL;
+	ObjH = other.ObjH;
+	ObjW = other.ObjW;
 	
 	JumpOut = other.JumpOut;
 	
@@ -750,6 +783,35 @@ void MissionEvent::FireWhenReady( std::set<uint32_t> *add_object_ids )
 			server->Data.SetProperty( PropertyName, value );
 	}
 	
+	if( SpawnFlags & SPAWNFLAG_BY_PLAYER )
+	{
+		server->Data.Lock.Lock();
+		
+		const GameObject *player_object = NULL;
+		for( std::map<uint32_t,GameObject*>::const_iterator obj_iter = server->Data.GameObjects.begin(); obj_iter != server->Data.GameObjects.end(); obj_iter ++ )
+		{
+			if( obj_iter->second->PlayerID || obj_iter->second->Owner() )
+			{
+				player_object = obj_iter->second;
+				if( player_object->Type() == XWing::Object::SHIP )
+				{
+					const Ship *player_ship = (const Ship*) player_object;
+					if( player_ship->Health > 0. )
+						break;  // Spawn relative to the first alive player ship.
+				}
+			}
+		}
+		
+		if( player_object )
+		{
+			X += player_object->X;
+			Y += player_object->Y;
+			Z += player_object->Z;
+		}
+		
+		server->Data.Lock.Unlock();
+	}
+	
 	if( SpawnClass.length() )
 	{
 		const ShipClass *sc = server->GetShipClass( SpawnClass );
@@ -778,38 +840,55 @@ void MissionEvent::FireWhenReady( std::set<uint32_t> *add_object_ids )
 			else
 				ship->Name = sc->LongName;
 			
-			if( SpawnFlags & SPAWNFLAG_BY_PLAYER )
-			{
-				server->Data.Lock.Lock();
-				
-				const GameObject *player_object = NULL;
-				for( std::map<uint32_t,GameObject*>::const_iterator obj_iter = server->Data.GameObjects.begin(); obj_iter != server->Data.GameObjects.end(); obj_iter ++ )
-				{
-					if( obj_iter->second->PlayerID || obj_iter->second->Owner() )
-					{
-						player_object = obj_iter->second;
-						if( player_object->Type() == XWing::Object::SHIP )
-						{
-							const Ship *player_ship = (const Ship*) player_object;
-							if( player_ship->Health > 0. )
-								break;  // Spawn relative to the first alive player ship.
-						}
-					}
-				}
-				
-				if( player_object )
-				{
-					X += player_object->X;
-					Y += player_object->Y;
-					Z += player_object->Z;
-				}
-				
-				server->Data.Lock.Unlock();
-			}
-			
 			ship->SetPos( X, Y, Z );
+			
 			if( FwdX || FwdY || FwdZ )
 				ship->SetFwdVec( FwdX, FwdY, FwdZ );
+		}
+	}
+	
+	if( SpawnServerObj.length() )
+	{
+		Obstacle *obstacle = new Obstacle( SpawnClientObj, SpawnServerObj );
+		obstacle->SetPos( X, Y, Z );
+		
+		if( FwdX || FwdY || FwdZ )
+			obstacle->SetFwdVec( FwdX, FwdY, FwdZ );
+		
+		if( ObjL || ObjH || ObjW )
+			obstacle->ScaleTo( ObjL, ObjH, ObjW );
+		
+		if( ! SpawnName.empty() )
+			obstacle->CollisionName = SpawnName;
+		
+		std::set<GameObject*> update_objects;
+		for( std::map<uint32_t,GameObject*>::const_iterator obj_iter = server->Data.GameObjects.begin(); obj_iter != server->Data.GameObjects.end(); obj_iter ++ )
+		{
+			// If this obstacle intersects any asteroids, they should not rotate.
+			if( (obj_iter->second->Type() == XWing::Object::ASTEROID) && obstacle->WillCollide( obj_iter->second, 0. )
+			&&  (obj_iter->second->RollRate || obj_iter->second->PitchRate || obj_iter->second->YawRate) )
+			{
+				obj_iter->second->RollRate = obj_iter->second->PitchRate = obj_iter->second->YawRate = 0.;
+				update_objects.insert( obj_iter->second );
+			}
+		}
+		
+		std::set<uint32_t> obj_ids;
+		obj_ids.insert( server->Data.AddObject( obstacle ) );
+		server->SendAddedObjects( &obj_ids );
+		
+		if( update_objects.size() )
+		{
+			Packet update_packet( Raptor::Packet::UPDATE );
+			int8_t precision = -127;
+			update_packet.AddChar( precision );
+			update_packet.AddUInt( update_objects.size() );
+			for( std::set<GameObject*>::iterator obj_iter = update_objects.begin(); obj_iter != update_objects.end(); obj_iter ++ )
+			{
+				update_packet.AddUInt( (*obj_iter)->ID );
+				(*obj_iter)->AddToUpdatePacketFromServer( &update_packet, precision );
+			}
+			server->Net.SendAll( &update_packet );
 		}
 	}
 	

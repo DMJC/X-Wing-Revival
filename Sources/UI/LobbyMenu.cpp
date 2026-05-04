@@ -113,6 +113,8 @@ LobbyMenu::LobbyMenu( void )
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "rebel_cruisers", "Rebel Cruisers", label_size, value_size ) );
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "empire_frigates", "Imperial Battleships", label_size, value_size ) );
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "empire_cruisers", "Imperial Cruisers", label_size, value_size ) );
+	ConfigOrder.push_back( new LobbyMenuConfiguration( "endor_rebel_fleet", "Rebel Fleet Size", label_size, value_size ) );
+	ConfigOrder.push_back( new LobbyMenuConfiguration( "endor_empire_fleet", "Empire Fleet Size", label_size, value_size ) );
 	ConfigOrder.push_back( NULL );
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "race_circuit", "Race Mode", label_size, value_size ) );
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "race_lap", "Lap Length", label_size, value_size ) );
@@ -123,11 +125,13 @@ LobbyMenu::LobbyMenu( void )
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "hunt_time_limit", "Time Limit", label_size, value_size ) );
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "yavin_time_limit", "Time Limit", label_size, value_size ) );
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "race_time_limit", "Time Limit", label_size, value_size ) );
+	ConfigOrder.push_back( new LobbyMenuConfiguration( "endor_superlaser_time", "SuperLaser Charge", label_size, value_size ) );
 	ConfigOrder.push_back( NULL );
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "ai_waves", "AI Ships", label_size, value_size ) );
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "ai_skill", "AI Pilot Skill", label_size, value_size ) );
 	ConfigOrder.push_back( NULL );
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "yavin_turrets", "Surface Turrets", label_size, value_size ) );
+	ConfigOrder.push_back( new LobbyMenuConfiguration( "endor_turrets", "Surface Turrets", label_size, value_size ) );
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "asteroids", "Asteroids", label_size, value_size ) );
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "bg", "Environment", label_size, value_size ) );
 	ConfigOrder.push_back( new LobbyMenuConfiguration( "allow_team_change", "Allow Team Change", label_size, value_size ) );
@@ -806,6 +810,29 @@ void LobbyMenu::UpdateInfoBoxes( void )
 	else
 		Configs["yavin_turrets"]->Value->LabelText = "Way Too Many";
 	
+	int endor_rebel_fleet = Raptor::Game->Data.PropertyAsInt("endor_rebel_fleet");
+	Configs["endor_rebel_fleet"]->Value->LabelText = endor_rebel_fleet ? (Num::ToString(endor_rebel_fleet) + std::string(" ships")) : "None";
+	
+	int endor_empire_fleet = Raptor::Game->Data.PropertyAsInt("endor_empire_fleet");
+	Configs["endor_empire_fleet"]->Value->LabelText = endor_empire_fleet ? (Num::ToString(endor_empire_fleet) + std::string(" ships")) : "None";
+	
+	int endor_superlaser_time = Raptor::Game->Data.PropertyAsInt("endor_superlaser_time");
+	Configs["endor_superlaser_time"]->Value->LabelText = endor_superlaser_time ? (Num::ToString(endor_superlaser_time) + std::string(" sec")) : "Disabled";
+	
+	int endor_turrets = Raptor::Game->Data.PropertyAsInt("endor_turrets");
+	if( endor_turrets <= 0 )
+		Configs["endor_turrets"]->Value->LabelText = "None";
+	else if( endor_turrets <= 20 )
+		Configs["endor_turrets"]->Value->LabelText = "Sparse";
+	else if( endor_turrets <= 40 )
+		Configs["endor_turrets"]->Value->LabelText = "Scattered";
+	else if( endor_turrets <= 60 )
+		Configs["endor_turrets"]->Value->LabelText = "Dense";
+	else if( endor_turrets <= 80 )
+		Configs["endor_turrets"]->Value->LabelText = "Crowded";
+	else
+		Configs["endor_turrets"]->Value->LabelText = "Overkill";
+	
 	int hunt_time_limit = Raptor::Game->Data.PropertyAsInt("hunt_time_limit");
 	Configs["hunt_time_limit"]->Value->LabelText = hunt_time_limit ? (Num::ToString(hunt_time_limit) + std::string(" min")) : "Unlimited";
 	
@@ -930,6 +957,41 @@ void LobbyMenu::UpdateInfoBoxes( void )
 		Configs["yavin_time_limit"]->Enabled = true;
 		Configs["yavin_turrets"]->Visible = true;
 		Configs["yavin_turrets"]->Enabled = true;
+		
+		Configs["endor_rebel_fleet"]->ShowButton = false;
+		Configs["endor_rebel_fleet"]->Visible = false;
+		Configs["endor_rebel_fleet"]->Enabled = false;
+		Configs["endor_empire_fleet"]->ShowButton = false;
+		Configs["endor_empire_fleet"]->Visible = false;
+		Configs["endor_empire_fleet"]->Enabled = false;
+		Configs["endor_superlaser_time"]->ShowButton = false;
+		Configs["endor_superlaser_time"]->Visible = false;
+		Configs["endor_superlaser_time"]->Enabled = false;
+		Configs["endor_turrets"]->ShowButton = false;
+		Configs["endor_turrets"]->Visible = false;
+		Configs["endor_turrets"]->Enabled = false;
+	}
+	else if( gametype == "endor" )
+	{
+		Configs["asteroids"]->ShowButton = false;
+		Configs["asteroids"]->Visible = false;
+		Configs["asteroids"]->Enabled = false;
+		
+		Configs["yavin_time_limit"]->ShowButton = false;
+		Configs["yavin_time_limit"]->Visible = false;
+		Configs["yavin_time_limit"]->Enabled = false;
+		Configs["yavin_turrets"]->ShowButton = false;
+		Configs["yavin_turrets"]->Visible = false;
+		Configs["yavin_turrets"]->Enabled = false;
+		
+		Configs["endor_rebel_fleet"]->Visible = true;
+		Configs["endor_rebel_fleet"]->Enabled = true;
+		Configs["endor_empire_fleet"]->Visible = true;
+		Configs["endor_empire_fleet"]->Enabled = true;
+		Configs["endor_superlaser_time"]->Visible = true;
+		Configs["endor_superlaser_time"]->Enabled = true;
+		Configs["endor_turrets"]->Visible = true;
+		Configs["endor_turrets"]->Enabled = true;
 	}
 	else
 	{
@@ -942,6 +1004,19 @@ void LobbyMenu::UpdateInfoBoxes( void )
 		Configs["yavin_turrets"]->ShowButton = false;
 		Configs["yavin_turrets"]->Visible = false;
 		Configs["yavin_turrets"]->Enabled = false;
+		
+		Configs["endor_rebel_fleet"]->ShowButton = false;
+		Configs["endor_rebel_fleet"]->Visible = false;
+		Configs["endor_rebel_fleet"]->Enabled = false;
+		Configs["endor_empire_fleet"]->ShowButton = false;
+		Configs["endor_empire_fleet"]->Visible = false;
+		Configs["endor_empire_fleet"]->Enabled = false;
+		Configs["endor_superlaser_time"]->ShowButton = false;
+		Configs["endor_superlaser_time"]->Visible = false;
+		Configs["endor_superlaser_time"]->Enabled = false;
+		Configs["endor_turrets"]->ShowButton = false;
+		Configs["endor_turrets"]->Visible = false;
+		Configs["endor_turrets"]->Enabled = false;
 	}
 	
 	// Show "Defending Team" and "Time Limit" for Hunt mode.
@@ -1125,6 +1200,10 @@ void LobbyMenu::UpdateInfoBoxes( void )
 		Configs["yavin_turrets"]->ShowButton = false;
 		Configs["yavin_turrets"]->Visible = false;
 		Configs["yavin_turrets"]->Enabled = false;
+		
+		Configs["endor_turrets"]->ShowButton = false;
+		Configs["endor_turrets"]->Visible = false;
+		Configs["endor_turrets"]->Enabled = false;
 		
 		Configs["defending_team"]->ShowButton = false;
 		Configs["defending_team"]->Visible = false;
@@ -1947,9 +2026,11 @@ void LobbyMenuConfigChangeButton::Clicked( Uint8 button )
 		if( value == "fleet" )
 			value = go_prev ? "mission" : "yavin";
 		else if( value == "yavin" )
-			value = go_prev ? "fleet" : "hunt";
+			value = go_prev ? "fleet" : "endor";
+		else if( value == "endor" )
+			value = go_prev ? "yavin" : "hunt";
 		else if( value == "hunt" )
-			value = go_prev ? "yavin" : "team_dm";
+			value = go_prev ? "endor" : "team_dm";
 		else if( value == "team_dm" )
 			value = go_prev ? "hunt" : "team_elim";
 		else if( value == "team_elim" )
@@ -2214,6 +2295,48 @@ void LobbyMenuConfigChangeButton::Clicked( Uint8 button )
 		else if( new_yavin_turrets > 210 )
 			new_yavin_turrets = 60;
 		value = Num::ToString( new_yavin_turrets );
+	}
+	
+	else if( config->Property == "endor_turrets" )
+	{
+		int new_endor_turrets = atoi( value.c_str() ) + (go_prev ? -20 : 20);
+		if( new_endor_turrets < 20 )
+			new_endor_turrets = 100;
+		else if( new_endor_turrets > 100 )
+			new_endor_turrets = 20;
+		value = Num::ToString( new_endor_turrets );
+	}
+	
+	else if( config->Property == "endor_rebel_fleet" )
+	{
+		int new_fleet = atoi( value.c_str() ) + (go_prev ? -1 : 1);
+		if( new_fleet < 1 )
+			new_fleet = 30;
+		else if( new_fleet > 30 )
+			new_fleet = 1;
+		value = Num::ToString( new_fleet );
+	}
+	
+	else if( config->Property == "endor_empire_fleet" )
+	{
+		int new_fleet = atoi( value.c_str() ) + (go_prev ? -1 : 1);
+		if( new_fleet < 0 )
+			new_fleet = 20;
+		else if( new_fleet > 20 )
+			new_fleet = 0;
+		value = Num::ToString( new_fleet );
+	}
+	
+	else if( config->Property == "endor_superlaser_time" )
+	{
+		int new_time = atoi( value.c_str() ) + (go_prev ? -5 : 5);
+		if( new_time < 0 )
+			new_time = 120;
+		else if( new_time < 10 )
+			new_time = go_prev ? 0 : 10;
+		else if( new_time > 120 )
+			new_time = 0;
+		value = Num::ToString( new_time );
 	}
 	
 	else if( (config->Property == "hunt_time_limit") || (config->Property == "race_time_limit") )
