@@ -1,6 +1,6 @@
 -------------------------------------------
 |              X-Wing Revival             |
-|          0.6 Alpha (2026-05-04)         |
+|         0.6.1 Alpha (2026-05-14)        |
 |  https://raptor007.com/x-wing-revival/  |
 |    Code by Raptor007 (Blair Sherman)    |
 |       Ship models by XWA Upgrade:       |
@@ -46,6 +46,10 @@ Alliance for helping me bring balance to the forces.
   Battle of Yavin: Rebels must fly down the trench and try to hit the exhaust port
     with a pair of proton torpedoes.  Imperials must try to prevent the Rebels from
     doing this before the time limit runs out.  Harder AI skill effects turrets too!
+
+  Battle of Endor: Rebels must fly into the Death Star II superstructure, hit the
+    power regulator, destroy the reactor core, and escape back through the tunnels.
+    The Empire wins if they destroy the Rebel fleet.
 
   Flagship Hunt: The attacking team must destroy the defending team's flagship before
     the time limit runs out.  (This mode was previously called "Capital Ship Hunt".)
@@ -625,6 +629,12 @@ console commands to execute, such as "sv gametype yavin" or "sv rebel_fighter A/
 
 
 == VERSION HISTORY ==
+
+Alpha 0.6.1 (2026-05-14):
+ * Fixed Death Star II reactor sometimes exploding from touching the floor.
+ * Fixed Death Star II tunnels and rooms sometimes disappearing when shot.
+ * Fixed VR getting disabled by one bad startup.  Improved error reporting.
+ * Hopefully improved portability of Linux ELF binary.
 
 Alpha 0.6 (2026-05-04):
  * New gametype: Battle of Endor!  Fly the tunnels to destroy the reactor.

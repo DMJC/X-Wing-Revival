@@ -314,6 +314,10 @@ bool Obstacle::WillCollide( const GameObject *other, double dt, std::string *thi
 	{
 		Ship *ship = (Ship*) other;
 		
+		// Prevent Death Star II main reactor from colliding with its room.
+		if( ship->Category() == ShipClass::CATEGORY_TARGET )
+			return false;
+		
 		// Obstacles can't be destroyed, so we don't care if a dead ship is colliding with it.
 		if( ship->Health <= 0. )
 			return false;

@@ -44,6 +44,7 @@ public:
 	std::map<std::string,std::string> PrevGfx, PrevSnd;
 	int Page;
 	bool Paused;
+	PrefsMenuVRCheckBox *VRCheckBox;
 	
 	PrefsMenu( void );
 	virtual ~PrefsMenu();
@@ -86,6 +87,8 @@ public:
 class PrefsMenuVRCheckBox : public PrefsMenuCheckBox
 {
 public:
+	uint8_t UpdateDelay;
+	
 	PrefsMenuVRCheckBox( SDL_Rect *rect, Font *font, std::string label );
 	virtual ~PrefsMenuVRCheckBox();
 	void Changed( void );

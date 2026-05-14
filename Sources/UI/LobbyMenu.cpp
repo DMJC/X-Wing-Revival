@@ -31,8 +31,8 @@ LobbyMenu::LobbyMenu( void )
 		Rect.h = 480;
 	}
 	
-	bool empire_campaign = (((const XWingGame*)( Raptor::Game ))->CampaignTeam == XWing::Team::EMPIRE);
-	Background.BecomeInstance( Raptor::Game->Res.GetAnimation( empire_campaign ? "bg_lobby2.ani" : "bg_lobby.ani" ) );
+	uint8_t campaign_team = ((const XWingGame*)( Raptor::Game ))->CampaignTeam;
+	Background.BecomeInstance( Raptor::Game->Res.GetAnimation( (campaign_team == XWing::Team::EMPIRE) ? "bg_lobby2.ani" : "bg_lobby.ani" ) );
 	
 	bool tiny = (Rect.h < 720) || (Rect.w < 800);
 	TitleFont = Raptor::Game->Res.GetFont( "Verdana.ttf", tiny ? 24 : 30 );

@@ -1860,8 +1860,8 @@ void XWingServer::Update( double dt )
 				}
 				else
 				{
-					shot = (Shot*) collision_iter->first;
-					hazard = collision_iter->second;
+					shot = (Shot*) collision_iter->second;
+					hazard = collision_iter->first;
 				}
 				
 				/*
@@ -5598,11 +5598,12 @@ void XWingServer::SetProperty( std::string name, std::string value )
 			std::map<std::string,std::string> properties;
 			for( std::map<std::string,std::string>::const_iterator property_iter = Properties.begin(); property_iter != Properties.end(); property_iter ++ )
 			{
-				if( (property_iter->first != "gametype") && ! Str::BeginsWith( property_iter->first, "mission" ) )
+				if( (property_iter->first != "gametype") && (property_iter->first != "campaign") && ! Str::BeginsWith( property_iter->first, "mission" ) )
 					properties[ property_iter->first ] = property_iter->second;
 			}
 			properties[ "player_team" ] = "";
 			properties[ "player_ship" ] = "";
+			properties[ "player_spawn" ] = "";
 			properties[ "mission_objs" ] = "";
 			Properties.clear();
 			
@@ -5682,6 +5683,8 @@ void XWingServer::ResetToDefaultProperties( void )
 		keep["permissions"] = Data.PropertyAsString("permissions");
 	if( Data.HasProperty("gametype") )
 		keep["gametype"]    = Data.PropertyAsString("gametype");
+	if( Data.HasProperty("campaign") )
+		keep["campaign"]    = Data.PropertyAsString("campaign");
 	if( Data.HasProperty("mission") )
 		keep["mission"]     = Data.PropertyAsString("mission");
 	

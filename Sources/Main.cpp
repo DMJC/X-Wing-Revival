@@ -2,7 +2,7 @@
  *  Main.cpp
  */
 
-#define VERSION "0.6 Alpha"
+#define VERSION "0.6.1 Alpha"
 
 #include "XWingGame.h"
 #include "XWingServer.h"

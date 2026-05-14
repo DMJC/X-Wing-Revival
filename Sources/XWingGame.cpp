@@ -360,7 +360,7 @@ void XWingGame::SetDefaultControls( void )
 		#if SDL_VERSION_ATLEAST(2,0,0)
 			Cfg.JoyAxisBinds[ "Gunfighter" ][ 0 ] = XWing::Control::ROLL;      // Stick X
 			Cfg.JoyAxisBinds[ "Gunfighter" ][ 1 ] = XWing::Control::PITCH;     // Stick Y
-			Cfg.JoyAxisBinds[ "Gunfighter" ][ 6 ] = XWing::Control::YAW;       // Twist
+			Cfg.JoyAxisBinds[ "Gunfighter" ][ 5 ] = XWing::Control::YAW;       // Twist
 		#else
 			Cfg.JoyAxisBinds[ "Gunfighter" ] = Cfg.JoyAxisBinds[ "Joy" ];
 		#endif

@@ -37,6 +37,7 @@ PrefsMenu::PrefsMenu( void )
 	BindFont    = Raptor::Game->Res.GetFont( "Verdana.ttf", 11 );
 	
 	Page = PAGE_VIDEO;
+	VRCheckBox = NULL;
 	UpdateContents();
 	
 	WatchSetting( "g_fullscreen" );
@@ -154,6 +155,8 @@ void PrefsMenu::UpdateContents( void )
 	// Remove existing elements.
 	
 	Selected = NULL;
+	uint8_t vr_update_delay = VRCheckBox ? VRCheckBox->UpdateDelay : 0;
+	VRCheckBox = NULL;
 	RemoveAllElements();
 	
 	
@@ -430,10 +433,7 @@ void PrefsMenu::UpdateContents( void )
 			g_debris_checkbox->TrueStr = "200";
 		#endif
 		if( Raptor::Game->Cfg.SettingAsInt("g_debris") )
-		{
-			g_debris_checkbox->Checked = true;
-			g_debris_checkbox->Image.BecomeInstance( g_debris_checkbox->ImageNormalChecked );  // FIXME: This should probably be moved to RaptorEngine.
-		}
+			g_debris_checkbox->SetChecked( true );
 		group->AddElement( g_debris_checkbox );
 		
 		rect.w = 65;
@@ -441,10 +441,7 @@ void PrefsMenu::UpdateContents( void )
 		rect.y = asteroid_lod_dropdown->Rect.y;
 		PrefsMenuCheckBox *g_sway_checkbox = new PrefsMenuCheckBox( &rect, LabelFont, "Sway", "g_sway", "1", "0" );
 		if( Raptor::Game->Cfg.SettingAsDouble("g_sway") )
-		{
-			g_sway_checkbox->Checked = true;
-			g_sway_checkbox->Image.BecomeInstance( g_sway_checkbox->ImageNormalChecked );  // FIXME: This should probably be moved to RaptorEngine.
-		}
+			g_sway_checkbox->SetChecked( true );
 		group->AddElement( g_sway_checkbox );
 		
 		// --------------------------------------------------------------------------------------------------------------------
@@ -457,10 +454,11 @@ void PrefsMenu::UpdateContents( void )
 		rect.x = 10;
 		rect.y = 10 + group->TitleFont->GetAscent();
 		rect.w = 90;
-		PrefsMenuVRCheckBox *vr_enable_checkbox = new PrefsMenuVRCheckBox( &rect, LabelFont, "VR Mode" );
-		group->AddElement( vr_enable_checkbox );
+		VRCheckBox = new PrefsMenuVRCheckBox( &rect, LabelFont, "VR Mode" );
+		group->AddElement( VRCheckBox );
+		VRCheckBox->UpdateDelay = vr_update_delay;
 		#ifdef NO_VR
-			vr_enable_checkbox->Enabled = false;
+			VRCheckBox->Enabled = false;
 		#endif
 		
 		rect.x += rect.w + 5;
@@ -475,10 +473,7 @@ void PrefsMenu::UpdateContents( void )
 		rect.w = 65;
 		PrefsMenuCheckBox *vr_sway_checkbox = new PrefsMenuCheckBox( &rect, LabelFont, "Sway", "vr_sway", "1", "0" );
 		if( Raptor::Game->Cfg.SettingAsDouble("vr_sway") )
-		{
-			vr_sway_checkbox->Checked = true;
-			vr_sway_checkbox->Image.BecomeInstance( vr_sway_checkbox->ImageNormalChecked );  // FIXME: This should probably be moved to RaptorEngine.
-		}
+			vr_sway_checkbox->SetChecked( true );
 		group->AddElement( vr_sway_checkbox );
 		
 		rect.y += rect.h + 8;
@@ -668,10 +663,7 @@ void PrefsMenu::UpdateContents( void )
 		PrefsMenuCheckBox *ui_ship_rotate = new PrefsMenuCheckBox( &rect, LabelFont, "Rotate Lobby Ship", "ui_ship_rotate", "20", "0" );
 		group->AddElement( ui_ship_rotate );
 		if( Raptor::Game->Cfg.SettingAsDouble("ui_ship_rotate") )
-		{
-			ui_ship_rotate->Checked = true;
-			ui_ship_rotate->Image.BecomeInstance( ui_ship_rotate->ImageNormalChecked );  // FIXME: This should probably be moved to RaptorEngine.
-		}
+			ui_ship_rotate->SetChecked( true );
 		*/
 		
 		rect.x = 10;
@@ -986,8 +978,7 @@ void PrefsMenu::UpdateContents( void )
 		group->AddElement( positional_checkbox );
 		if( Raptor::Game->Cfg.SettingAsBool("s_voice_positional") )
 		{
-			positional_checkbox->Checked = true;
-			positional_checkbox->Image.BecomeInstance( positional_checkbox->ImageNormalChecked );  // FIXME: This should probably be moved to RaptorEngine.
+			positional_checkbox->SetChecked( true );
 			if( Raptor::Game->Cfg.SettingAsInt("s_voice_positional") >= 2 )
 			{
 				positional_checkbox->LabelText = "Positional Voice (All Channels)";
@@ -1587,6 +1578,13 @@ void PrefsMenu::Draw( void )
 	Rect.w = 640;
 	Rect.h = 480;
 	
+	if( VRCheckBox && VRCheckBox->UpdateDelay )
+	{
+		VRCheckBox->UpdateDelay --;
+		if( ! VRCheckBox->UpdateDelay )
+			VRCheckBox->SetChecked( Raptor::Game->Cfg.SettingAsBool("vr_enable",VRCheckBox->Checked) );
+	}
+	
 	Window::Draw();
 }
 
@@ -1663,6 +1661,7 @@ void PrefsMenuCheckBox::Changed( void )
 
 PrefsMenuVRCheckBox::PrefsMenuVRCheckBox( SDL_Rect *rect, Font *font, std::string label ) : PrefsMenuCheckBox( rect, font, label, "vr_enable" )
 {
+	UpdateDelay = 0;
 }
 
 
@@ -1676,12 +1675,13 @@ void PrefsMenuVRCheckBox::Changed( void )
 	PrefsMenuCheckBox::Changed();
 	
 	int maxfps = Raptor::Game->Cfg.SettingAsInt( "maxfps", 60 );
+	int vr_maxfps = Raptor::Game->Cfg.SettingAsInt( "vr_maxfps", 90 );
 	PrefsMenu *prefs_menu = (PrefsMenu*) Container->Container;
 	
 	if( Checked )
 	{
-		if( maxfps && (maxfps < 90) )
-			Raptor::Game->Cfg.Settings[ "maxfps" ] = "90";
+		if( maxfps && ((maxfps < vr_maxfps) || ! vr_maxfps) )
+			Raptor::Game->Cfg.Settings[ "maxfps" ] = Num::ToString( vr_maxfps );
 		
 		double asteroid_lod = Raptor::Game->Cfg.SettingAsDouble( "g_asteroid_lod", 1. );
 		if( asteroid_lod > 0.5 )
@@ -1693,7 +1693,7 @@ void PrefsMenuVRCheckBox::Changed( void )
 	}
 	else
 	{
-		if( maxfps == 90 )
+		if( maxfps == vr_maxfps )
 		{
 			Raptor::Game->Cfg.Settings[ "maxfps" ] = "60";
 			
@@ -1711,6 +1711,7 @@ void PrefsMenuVRCheckBox::Changed( void )
 	}
 	
 	prefs_menu->UpdateContents();
+	prefs_menu->VRCheckBox->UpdateDelay = 7;
 }
 
 

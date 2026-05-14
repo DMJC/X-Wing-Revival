@@ -238,19 +238,7 @@ default: $(TARGET)
 	rsync -ax "$(EXE)" "$@"
 	-chmod +x "$@"
 	-patchelf --set-rpath '$$ORIGIN/Bin64' "$@"
-#	-patchelf --replace-needed /usr/lib64/libopenvr_api.so libopenvr_api.so "$@"
-#	-patchelf --replace-needed libSDL2-2.0.so.0 libSDL2.so "$@"
-#	-patchelf --replace-needed libSDL2_image-2.0.so.0 libSDL2_image.so "$@"
-#	-patchelf --replace-needed libSDL2_mixer-2.0.so.0 libSDL2_mixer.so "$@"
-#	-patchelf --replace-needed libSDL2_net-2.0.so.0 libSDL2_net.so "$@"
-#	-patchelf --replace-needed libSDL2_ttf-2.0.so.0 libSDL2_ttf.so "$@"
-#	-patchelf --replace-needed libGL.so.1 libGL.so "$@"
-#	-patchelf --replace-needed libGLU.so.1 libGLU.so "$@"
-#	-patchelf --replace-needed libGLEW.so.2.2 libGLEW.so "$@"
-#	-patchelf --replace-needed libstdc++.so.6 libstdc++.so "$@"
-#	-patchelf --replace-needed libgcc_s.so.1 libgcc_s-1.so "$@"
-#	-patchelf --replace-needed libm.so.6 libm-6.so "$@"
-#	-patchelf --replace-needed libc.so.6 libc-6.so "$@"
+	-cd Data && ./Tools/makedist.elf 'X-Wing Revival.elf' 'Bin64'
 
 exe: $(SOURCES) $(GAME_HEADERS) $(ENGINE_HEADERS) $(EXE)
 
