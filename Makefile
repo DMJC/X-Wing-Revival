@@ -14,14 +14,16 @@ WFLAGS = -Wall -Wextra -Wno-multichar -Wno-unused-parameter -Wno-overloaded-virt
 INC = /opt/local/include /opt/local/include/SDL /usr/local/include /usr/include
 LIBDIR = /usr/lib64
 LIB = libSDLmain.a libSDL_net.so libSDL_mixer.so libSDL_ttf.so libSDL_image.so libSDL.so libGLEW.so libGLU.so libGL.so libopenvr_api.so
-
-# On Debian and Debian-based distros (e.g. Ubuntu), libraries live in an
-# architecture-specific multiarch directory.  Build with DEBIAN=1 to use it.
-ifdef DEBIAN
-LIBDIR = /usr/lib/$(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
-endif
 DEF =
 EXE = Data/xwingrev
+
+# On Debian and Debian-based distros (e.g. Ubuntu), libraries live in an
+# architecture-specific multiarch directory, and the OpenVR headers are
+# installed under their own subdirectory.  Build with DEBIAN=1 to use these.
+ifdef DEBIAN
+LIBDIR = /usr/lib/$(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
+DEF += DEBIAN
+endif
 VERSION = $(shell grep 'define VERSION' Sources/Main.cpp | grep -oh '[0-9.XYZ]*')
 GAMEDIR = /Games/X-Wing Revival
 SERVERDIR = /srv/xwingrev
