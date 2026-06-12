@@ -484,22 +484,6 @@ void PrefsMenu::UpdateContents( void )
 		rect.w = 105;
 		group->AddElement( new PrefsMenuTextBox( &rect, ItemFont, Font::ALIGN_MIDDLE_CENTER, "vr_fov" ) );
 		
-		rect.y += rect.h + 8;
-		rect.x = 10;
-		rect.w = 165;
-		group->AddElement( new Label( &rect, "Eye Separation (m):", LabelFont, Font::ALIGN_MIDDLE_LEFT ) );
-		rect.x += rect.w + 5;
-		rect.w = 105;
-		group->AddElement( new PrefsMenuTextBox( &rect, ItemFont, Font::ALIGN_MIDDLE_CENTER, "vr_separation" ) );
-		
-		rect.y += rect.h + 8;
-		rect.x = 10;
-		rect.w = 165;
-		group->AddElement( new Label( &rect, "Center Offset (px):", LabelFont, Font::ALIGN_MIDDLE_LEFT ) );
-		rect.x += rect.w + 5;
-		rect.w = 105;
-		group->AddElement( new PrefsMenuTextBox( &rect, ItemFont, Font::ALIGN_MIDDLE_CENTER, "vr_offset" ) );
-		
 		group->Rect.w = rect.x + rect.w + 10;
 		group->Rect.h = rect.y + rect.h + 10;
 		vr_sway_checkbox->Rect.x = group->Rect.w - vr_sway_checkbox->Rect.w - 10;

@@ -231,10 +231,7 @@ MacOS says the application "X-Wing Revival.app" cannot be opened.
   Sway: Enable cockpit motion in VR.  More immersive, but can be nauseating.
 
   FOVW / FOVH: Field of view in degrees; negative means vertical FOV.  Default: -111
-
-  Eye Separation: Spacing in meters between the two eyes.  Default: 0.0625
-
-  Center Offset: Offset in pixels from screen center to eye center.  Default: 87
+    Not used in VR Mode, where the headset's own per-eye projection is used instead.
 
 --Networking--
 
