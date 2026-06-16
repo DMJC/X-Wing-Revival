@@ -116,8 +116,12 @@ CampaignMenuTeamButton::~CampaignMenuTeamButton()
 void CampaignMenuTeamButton::Draw( void )
 {
 	glPushAttrib( GL_VIEWPORT_BIT );
-	Raptor::Game->Gfx.SetViewport( CalcRect.x, CalcRect.y, CalcRect.w, CalcRect.h );
-	
+	// In VR, shift the viewport to match the per-eye convergence offset that Setup2D applies for 2D content.
+	int vr_shift_x = 0;
+	if( Raptor::Game->Gfx.DrawTo && Raptor::Game->Gfx.DrawTo->VRProjection )
+		vr_shift_x = (int)( -Raptor::Game->Gfx.DrawTo->VRProjectionMatrix[ 8 ] * Raptor::Game->Gfx.W / 2. );
+	Raptor::Game->Gfx.SetViewport( CalcRect.x + vr_shift_x, CalcRect.y, CalcRect.w, CalcRect.h );
+
 	bool hovering = MouseIsWithin && Enabled;
 	Camera cam;
 	cam.FOV = 30;
@@ -131,7 +135,7 @@ void CampaignMenuTeamButton::Draw( void )
 	}
 	pos.RotateAround( &(pos.Up), Rotation * -1. );
 	Raptor::Game->Gfx.Setup3D( &cam, CalcRect.h ? (CalcRect.w / (double) CalcRect.h) : 1. );
-	
+
 	bool use_shaders = Raptor::Game->Cfg.SettingAsBool("g_shader_enable");
 	if( use_shaders )
 	{

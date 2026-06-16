@@ -18,6 +18,7 @@
 #include "Shot.h"
 #include "Asteroid.h"
 #include "Turret.h"
+#include "NavPoint.h"
 #include "DeathStar.h"
 #include "DeathStarBox.h"
 #include "DockingBay.h"
@@ -166,7 +167,8 @@ void XWingServer::Started( void )
 	TeamScores.clear();
 	ShipScores.clear();
 	Cheaters.clear();
-	
+	PendingNavJumps.clear();
+
 	Raptor::Game->Cfg.Load( "server.cfg" );  // FIXME: Thread locking?
 	
 	SelectMission();
@@ -190,6 +192,7 @@ void XWingServer::Stopped( void )
 	TeamScores.clear();
 	ShipScores.clear();
 	Cheaters.clear();
+	PendingNavJumps.clear();
 }
 
 
@@ -674,6 +677,95 @@ bool XWingServer::ProcessPacket( Packet *packet, ConnectedClient *from_client )
 		return true;
 	}
 	
+	else if( type == XWing::Packet::LAND )
+	{
+		if( from_client && from_client->PlayerID && (GameType == XWing::GameType::OBJECTIVES)
+		&&  Data.PropertyAsBool("landing_available") && (State == XWing::State::FLYING) )
+		{
+			uint32_t landing_ship_id = (uint32_t) Data.PropertyAsInt("landing_ship_id");
+
+			Ship *player_ship  = NULL;
+			Ship *landing_ship = NULL;
+			Data.Lock.Lock();
+			for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
+			{
+				if( obj_iter->second->Type() != XWing::Object::SHIP )
+					continue;
+				Ship *s = (Ship*) obj_iter->second;
+				if( s->PlayerID == from_client->PlayerID )
+					player_ship = s;
+				if( s->ID == landing_ship_id )
+					landing_ship = s;
+			}
+			Data.Lock.Unlock();
+
+			if( player_ship && landing_ship && (player_ship->Health > 0.) && !player_ship->JumpedOut
+			&&  (landing_ship->Health > 0.) && (player_ship->Dist(landing_ship) <= 100.) )
+			{
+				// Player has successfully landed. Set the victor and end the round.
+				uint8_t landed_team = player_ship->Team;
+				Data.SetProperty( "victor", (landed_team == XWing::Team::REBEL) ? "rebel" : "empire" );
+			}
+		}
+		return true;
+	}
+
+	else if( type == XWing::Packet::NAV_JUMP )
+	{
+		if( from_client && from_client->PlayerID )
+		{
+			uint32_t nav_id = packet->NextUInt();
+
+			// Find the player's ship and the requested nav point.
+			Ship *player_ship = NULL;
+			NavPoint *nav = NULL;
+			Data.Lock.Lock();
+			for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
+			{
+				if( (obj_iter->second->Type() == XWing::Object::SHIP) && (obj_iter->second->PlayerID == from_client->PlayerID) )
+					player_ship = (Ship*) obj_iter->second;
+				if( obj_iter->second->ID == nav_id )
+					nav = (obj_iter->second->Type() == XWing::Object::NAV_POINT) ? (NavPoint*) obj_iter->second : NULL;
+			}
+			Data.Lock.Unlock();
+
+			if( player_ship && nav && (player_ship->Health > 0.) && !player_ship->JumpedOut && (player_ship->SystemNumber == nav->SystemNumber) )
+			{
+				// Check visibility (variable or fixed).
+				bool nav_visible = nav->VariableName.empty() ? nav->Visible : Data.PropertyAsBool(nav->VariableName);
+				if( nav_visible && (player_ship->Dist(nav) <= 100.) )
+				{
+					// Look up destination spawn from system properties.
+					std::string spawn_key = std::string("system_") + Num::ToString((int)nav->TargetSystem) + std::string("_spawn");
+					std::string spawn_val = Data.PropertyAsString(spawn_key);
+					std::vector<std::string> spawn_parts = Str::SplitToVector(spawn_val, " ");
+					double dest_x = (spawn_parts.size() >= 1) ? atof(spawn_parts.at(0).c_str()) : nav->X;
+					double dest_y = (spawn_parts.size() >= 2) ? atof(spawn_parts.at(1).c_str()) : nav->Y;
+					double dest_z = (spawn_parts.size() >= 3) ? atof(spawn_parts.at(2).c_str()) : nav->Z;
+
+					// Trigger jump-out animation.
+					player_ship->JumpedOut    = true;
+					player_ship->JumpProgress = 0.;
+					player_ship->Lifetime.Reset();
+					player_ship->MotionVector = player_ship->Fwd * player_ship->MaxSpeed();
+					Packet jump_out( XWing::Packet::JUMP_OUT );
+					jump_out.AddUInt( player_ship->ID );
+					Net.SendAll( &jump_out );
+
+					// Schedule the teleport to happen after the animation (~1.5s).
+					PendingNavJump pnj;
+					pnj.FireTime   = RoundTimer.ElapsedSeconds() + 1.5;
+					pnj.DestSystem = nav->TargetSystem;
+					pnj.DestX      = dest_x;
+					pnj.DestY      = dest_y;
+					pnj.DestZ      = dest_z;
+					PendingNavJumps[ from_client->PlayerID ] = pnj;
+				}
+			}
+		}
+		return true;
+	}
+
 	return RaptorServer::ProcessPacket( packet, from_client );
 }
 
@@ -776,8 +868,41 @@ void XWingServer::Update( double dt )
 		AllowTeamChange = Data.PropertyAsBool("allow_team_change",false);
 		
 		
+		// Process any pending system-jump teleports.
+		if( !PendingNavJumps.empty() )
+		{
+			for( std::map<uint16_t,PendingNavJump>::iterator pnj_iter = PendingNavJumps.begin(); pnj_iter != PendingNavJumps.end(); )
+			{
+				if( round_time >= pnj_iter->second.FireTime )
+				{
+					// Find the player's ship and teleport it to the destination.
+					for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
+					{
+						if( (obj_iter->second->Type() == XWing::Object::SHIP) && (obj_iter->second->PlayerID == pnj_iter->first) )
+						{
+							Ship *ship = (Ship*) obj_iter->second;
+							ship->X            = pnj_iter->second.DestX;
+							ship->Y            = pnj_iter->second.DestY;
+							ship->Z            = pnj_iter->second.DestZ;
+							ship->JumpedOut    = false;
+							ship->JumpProgress = 0.;
+							ship->Lifetime.Reset( 0.5 );
+							ship->SystemNumber = pnj_iter->second.DestSystem;
+							ship->MotionVector = ship->Fwd * ship->MaxSpeed();
+							ship->SendUpdate( 127 );
+							break;
+						}
+					}
+					pnj_iter = PendingNavJumps.erase( pnj_iter );
+				}
+				else
+					++ pnj_iter;
+			}
+		}
+
+
 		// Build lists of ships, shots, and other useful object subsets.
-		
+
 		std::map<uint32_t,Ship*> ships;
 		std::vector<Shot*> shots, missiles;
 		std::map<uint32_t,Turret*> turrets;
@@ -5335,7 +5460,21 @@ void XWingServer::Update( double dt )
 						victor_name = "The Galactic Empire";
 					}
 				}
-				
+				else if( GameType == XWing::GameType::OBJECTIVES )
+				{
+					// Only player death triggers defeat; landing triggers victory via the "victor" property (handled above).
+					if( dead_player_team == XWing::Team::REBEL )
+					{
+						victor = XWing::Team::EMPIRE;
+						victor_name = "The Galactic Empire";
+					}
+					else if( dead_player_team == XWing::Team::EMPIRE )
+					{
+						victor = XWing::Team::REBEL;
+						victor_name = "The Rebel Alliance";
+					}
+				}
+
 				// Make sure the final scores are updated.
 				SendScores();
 				
@@ -5903,7 +6042,9 @@ uint32_t XWingServer::ParseGameType( std::string gametype ) const
 		return XWing::GameType::CAPITAL_SHIP_HUNT;
 	else if( Str::EqualsInsensitive( gametype, "fleet" ) )
 		return XWing::GameType::FLEET_BATTLE;
-	
+	else if( Str::EqualsInsensitive( gametype, "objectives" ) )
+		return XWing::GameType::OBJECTIVES;
+
 	return XWing::GameType::UNDEFINED;
 }
 
@@ -6017,6 +6158,63 @@ void XWingServer::BeginFlying( uint16_t player_id, bool respawn )
 			// Set triggers for mission events.
 			for( std::vector<MissionEvent>::const_iterator event_iter = mission_iter->second.Events.begin(); event_iter != mission_iter->second.Events.end(); event_iter ++ )
 				EventTriggers[ event_iter->Trigger ].push_back( *event_iter );
+
+			// For multisystem missions, register system backgrounds/spawns and create NavPoint objects.
+			if( mission_iter->second.IsMultiSystem )
+			{
+				Data.SetProperty( "multisystem", "true" );
+				std::set<uint32_t> nav_object_ids;
+				std::map<std::string,std::string> sys_info;
+				for( std::vector<MissionSystem>::const_iterator sys_iter = mission_iter->second.Systems.begin(); sys_iter != mission_iter->second.Systems.end(); sys_iter ++ )
+				{
+					std::string bg_key    = std::string("system_") + Num::ToString((int)sys_iter->Number) + std::string("_bg");
+					std::string spawn_key = std::string("system_") + Num::ToString((int)sys_iter->Number) + std::string("_spawn");
+					std::string bg_val    = sys_iter->Background.empty() ? "stars" : sys_iter->Background;
+					std::string spawn_val = Num::ToString(sys_iter->SpawnX) + std::string(" ") + Num::ToString(sys_iter->SpawnY) + std::string(" ") + Num::ToString(sys_iter->SpawnZ);
+					Data.SetProperty( bg_key,    bg_val    );
+					Data.SetProperty( spawn_key, spawn_val );
+					sys_info[ bg_key    ] = bg_val;
+					sys_info[ spawn_key ] = spawn_val;
+
+					for( std::vector<MissionNavPoint>::const_iterator np_iter = sys_iter->NavPoints.begin(); np_iter != sys_iter->NavPoints.end(); np_iter ++ )
+					{
+						NavPoint *nav = new NavPoint();
+						nav->Name         = np_iter->Name;
+						nav->SystemNumber = sys_iter->Number;
+						nav->TargetSystem = np_iter->TargetSystem;
+						nav->X            = np_iter->X;
+						nav->Y            = np_iter->Y;
+						nav->Z            = np_iter->Z;
+						nav->VariableName = np_iter->VariableName;
+						if( np_iter->VariableName.empty() )
+						{
+							nav->Visible = (sys_iter->Number == 1) ? true : np_iter->VisibleByDefault;
+						}
+						else
+						{
+							// Initialize the variable to its default value and use it for visibility.
+							nav->Visible = np_iter->VisibleByDefault;
+							std::string init_val = np_iter->VisibleByDefault ? "true" : "false";
+							Data.SetProperty( np_iter->VariableName, init_val );
+							sys_info[ np_iter->VariableName ] = init_val;
+						}
+						nav_object_ids.insert( Data.AddObject(nav) );
+					}
+				}
+				SendAddedObjects( &nav_object_ids );
+				// Send system info to clients.
+				if( !sys_info.empty() )
+				{
+					Packet sys_packet( Raptor::Packet::INFO );
+					sys_packet.AddUShort( sys_info.size() );
+					for( std::map<std::string,std::string>::const_iterator it = sys_info.begin(); it != sys_info.end(); it ++ )
+					{
+						sys_packet.AddString( it->first );
+						sys_packet.AddString( it->second );
+					}
+					Net.SendAll( &sys_packet );
+				}
+			}
 		}
 		
 		std::string player_team = (gametype == "mission") ? Data.PropertyAsString("player_team") : "";
@@ -8414,6 +8612,8 @@ void XWingServer::BeginFlying( uint16_t player_id, bool respawn )
 						ship->SetFwdVec( (rebel ? -1. : 1.), 0., 0. );
 					}
 					ship->FixVectors();
+					if( Data.PropertyAsBool("multisystem") )
+						ship->SystemNumber = 1;
 					ship->ResetTurrets();
 					
 					Squadrons[ squadron ].insert( ship->ID );
@@ -8469,10 +8669,51 @@ void XWingServer::BeginFlying( uint16_t player_id, bool respawn )
 		
 		
 		// Send any new objects added (spawned ships and turrets) to all players.
-		
+
 		SendAddedObjects( &add_object_ids );
 	}
-	
+
+	// For objectives missions, identify the landing ship and broadcast its ID and availability.
+	if( GameType == XWing::GameType::OBJECTIVES )
+	{
+		std::string landing_class = Data.PropertyAsString("landing");
+		if( !landing_class.empty() )
+		{
+			const ShipClass *sc = GetShipClass( landing_class );
+			Data.Lock.Lock();
+			for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
+			{
+				if( obj_iter->second->Type() != XWing::Object::SHIP )
+					continue;
+				Ship *s = (Ship*) obj_iter->second;
+				if( sc ? (s->Class == sc) : Str::EqualsInsensitive(s->Name, landing_class) )
+				{
+					Data.SetProperty( "landing_ship_id", Num::ToString((int)s->ID) );
+					break;
+				}
+			}
+			Data.Lock.Unlock();
+		}
+		if( Data.PropertyAsString("landing_available").empty() )
+			Data.SetProperty( "landing_available", "false" );
+
+		std::map<std::string,std::string> obj_info;
+		if( !Data.PropertyAsString("landing_ship_id").empty() )
+			obj_info["landing_ship_id"] = Data.PropertyAsString("landing_ship_id");
+		obj_info["landing_available"] = Data.PropertyAsString("landing_available");
+		if( !obj_info.empty() )
+		{
+			Packet obj_packet( Raptor::Packet::INFO );
+			obj_packet.AddUShort( obj_info.size() );
+			for( std::map<std::string,std::string>::const_iterator it = obj_info.begin(); it != obj_info.end(); it ++ )
+			{
+				obj_packet.AddString( it->first );
+				obj_packet.AddString( it->second );
+			}
+			Net.SendAll( &obj_packet );
+		}
+	}
+
 	// Tell clients to clear/update team scores.
 	SendScores();
 	

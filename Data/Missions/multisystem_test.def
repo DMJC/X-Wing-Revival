@@ -1,0 +1,26 @@
+multisystem
+systems 2
+mission_name Multisystem Test
+mission_desc Test two connected star systems.
+gametype team_elim
+player_team rebel
+player_ship X/W
+
+system 1
+bg stars
+player_spawn 0 0 0
+navpoint "Jump to Hoth" 500 0 0 true 2
+
+at 0:05 while player alive
+alert r0_base.wav You are in the Anoat system. Fly to the nav point and press J to jump to Hoth.
+system 1
+
+system 2
+bg nebula
+player_spawn 10000 0 0
+navpoint "Return to Anoat" 9500 0 0 true 1
+navpoint "Jump to Endor" 10500 0 0 false 1 var endor_visible
+
+on destroyed rebel_ship while player alive
+endor_visible true
+system 2

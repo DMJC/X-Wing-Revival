@@ -31,8 +31,12 @@ bool Mission::Parse( std::vector<std::string> &lines )
 {
 	Properties.clear();
 	Events.clear();
-	
+	IsMultiSystem = false;
+	SystemCount   = 0;
+	Systems.clear();
+
 	bool reading_properties = true;
+	int8_t current_system = -1;  // -1 = not inside a system block
 	uint8_t event_trigger = MissionEvent::TRIGGER_NEVER;
 	uint32_t event_trigger_flags = 0x00000000;
 	double event_time = 0.;
@@ -79,14 +83,68 @@ bool Mission::Parse( std::vector<std::string> &lines )
 		
 		bool event_trigger_line = (var == "at") || (var == "on") || (var == "when") || (var == "while") || strchr( var.c_str() , ':' );
 		
-		if( reading_properties && args.size() && ! event_trigger_line )
+		if( (var == "multisystem") && ! args.size() )
+		{
+			IsMultiSystem = true;
+		}
+		else if( (var == "systems") && args.size() )
+		{
+			SystemCount = (uint8_t) atoi( args.at(0).c_str() );
+		}
+		else if( (var == "system") && args.size() )
+		{
+			uint8_t sys_num = (uint8_t) atoi( args.at(0).c_str() );
+			if( current_system == (int8_t)sys_num )
+			{
+				// Second occurrence of "system N" closes the block.
+				current_system = -1;
+			}
+			else
+			{
+				// First occurrence opens a new system block.
+				current_system = (int8_t)sys_num;
+				reading_properties = false;
+				Systems.push_back( MissionSystem(sys_num) );
+			}
+		}
+		else if( (current_system >= 0) && ! event_trigger_line )
+		{
+			// Inside a system block: handle system-specific properties.
+			MissionSystem &sys = Systems.back();
+
+			if( (var == "bg") && args.size() )
+			{
+				sys.Background = args.at(0);
+			}
+			else if( (var == "player_spawn") && args.size() >= 3 )
+			{
+				sys.SpawnX = atof( args.at(0).c_str() );
+				sys.SpawnY = atof( args.at(1).c_str() );
+				sys.SpawnZ = atof( args.at(2).c_str() );
+			}
+			else if( (var == "navpoint") && args.size() >= 5 )
+			{
+				MissionNavPoint np;
+				np.Name             = args.at(0);
+				np.X                = atof( args.at(1).c_str() );
+				np.Y                = atof( args.at(2).c_str() );
+				np.Z                = atof( args.at(3).c_str() );
+				np.VisibleByDefault = Str::EqualsInsensitive( args.at(4), "true" ) || (args.at(4) == "1");
+				np.TargetSystem     = (args.size() >= 6) ? (uint8_t) atoi( args.at(5).c_str() ) : 0;
+				if( args.size() >= 8 && Str::EqualsInsensitive(args.at(6), "var") )
+					np.VariableName = args.at(7);
+				sys.NavPoints.push_back( np );
+			}
+			// Non-navpoint, non-system lines fall through to event parsing below.
+		}
+		else if( reading_properties && args.size() && ! event_trigger_line )
 		{
 			// Missions begin with property definitions.
-			
+
 			std::string value = args.at(0);
 			for( size_t i = 1; i < args.size(); i ++ )
 				value += std::string(" ") + args.at(i);
-			
+
 			Properties[ var ] = value;
 		}
 		else if( event_trigger_line )

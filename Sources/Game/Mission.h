@@ -17,12 +17,39 @@ class MissionEvent;
 #include "Ship.h"
 
 
+struct MissionNavPoint
+{
+	std::string Name;
+	double X, Y, Z;
+	bool VisibleByDefault;
+	uint8_t TargetSystem;
+	std::string VariableName;
+};
+
+
+struct MissionSystem
+{
+	uint8_t Number;
+	std::string Background;
+	double SpawnX, SpawnY, SpawnZ;
+	std::vector<MissionNavPoint> NavPoints;
+
+	MissionSystem( uint8_t number = 0 ) : Number(number), SpawnX(0.), SpawnY(0.), SpawnZ(0.) {}
+};
+
+
 class Mission
 {
 public:
 	std::map<std::string,std::string> Properties;
 	std::vector<MissionEvent> Events;
-	
+
+	bool IsMultiSystem;
+	uint8_t SystemCount;
+	std::vector<MissionSystem> Systems;
+
+	Mission( void ) : IsMultiSystem(false), SystemCount(0) {}
+
 	bool Load( const std::string &filename );
 	bool Parse( const std::string &content );
 	bool Parse( std::vector<std::string> &lines );

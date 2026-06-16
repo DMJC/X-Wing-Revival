@@ -57,6 +57,7 @@ public:
 	uint8_t TargetSubsystem;
 	float TargetLock;
 	uint32_t NextCheckpoint;
+	uint8_t SystemNumber;
 	
 	int8_t EngineSoundDir;
 	Clock EngineSoundClock;

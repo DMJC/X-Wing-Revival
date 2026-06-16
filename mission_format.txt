@@ -1,0 +1,187 @@
+Mission .def File Format
+  
+  Mission files are plain text, one directive per line. They divide into three sections: header (metadata), event scripts (timed
+  and conditional), and flag variables.
+
+  ---
+  Header Directives
+
+  These appear at the top and configure the mission:
+
+  ┌───────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────────────┐
+  │                 Directive                 │                                  Description                                   │
+  ├───────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────┤
+  │ mission_name                                  │ Display name                                                               │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ mission_desc                                  │ Short description                                                          │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ mission_opts                                  │ Space-separated list of player-configurable options (e.g. dm_kill_limit    │
+  │                                               │ ai_waves)                                                                  │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ gametype                                      │ Starting gametype: team_race, team_elim, ffa_dm, hunt, fleet               │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ player_team                                   │ rebel or empire                                                            │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ player_ship                                   │ Space-separated list of ship codes the player can choose                   │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ allow_ship_change                             │ true/false — allow mid-mission ship switching                  
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ defending_team                                │ Which team owns the objective ships                                        │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ player_group                                  │ Player's AI group number                                                   │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ player_spawn                                  │ x y z [dx dy dz] — position and optional facing vector                     │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ rebel_spawn / empire_spawn                    │ Same format for AI spawns                                                  │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ rebel_fighter / empire_fighter                │ Default fighter ship type for each team                                    │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ rebel_bomber / empire_bomber                  │ Default bomber ship type                                                   │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ rebel_flagship / empire_flagship              │ Capital ship type for each team                                            │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ rebel_flagship_name / empire_flagship_name    │ Name string for flagship                                                   │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ rebel_flagship_shields / rebel_flagship_hull  │ Starting shield/hull %                                                     │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ rebel_fighter_squadron /                      │ Squadron name                                                              │
+  │ empire_fighter_squadron                       │                                                                            │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ rebel_bomber_squadron /                       │ Squadron name                                                              │
+  │ empire_bomber_squadron                        │                                                                            │
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ rebel_cruisers / empire_cruisers              │ Number of cruisers in fleet mode                                       
+  ├───────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┤
+  │ rebel_waves / empire_waves / ai_waves         │ Wave counts                                                                │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ ai_per_wave                                           │ Ships per AI wave                                                  │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ ai_fighter_ratio                                      │ Ratio of fighters to bombers in AI waves                           │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ ai_empire_ratio                                       │ Empire-to-rebel ratio adjustment                                   │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ ai_ceasefire                                          │ true — AI holds fire at mission start                              │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ ai_respawn                                            │ true — AI ships respawn                                            │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ ai_skill                                              │ Skill adjustment (e.g. -1)                                         │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ respawn_time                                          │ Seconds before respawn                                             │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ race_lap                                              │ Number of laps for race missions                                   │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ race_circuit                                          │ true — circuit (looping) race                                      │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ team_race_checkpoints                                 │ Number of checkpoints                                              │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ dm_kill_limit                                         │ Kill limit for deathmatch                                          │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ mission_objs                                          │ Comma-separated list of ship types that must be destroyed to win   │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ asteroids                                             │ Number of asteroids to spawn                                       │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ bg                                                    │ Background: nebula, nebula2, etc.                                  │
+  ├───────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────┤
+  │ yavin_goalie, yavin_repair_bay, yavin_time_limit,     │ Yavin trench run parameters                                        │
+  │ yavin_turrets                                         │                                                                    │
+  └───────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────┘
+  ---
+  Script Blocks
+  
+  Scripts are triggered by time or events, and contain a list of actions to run in sequence.
+
+  Time trigger
+
+  at M:SS [while <condition>]
+    <actions...>
+
+  Polled condition trigger
+
+  when ( <condition> ) [and ( <condition> ) ...]
+    <actions...>
+
+  Event trigger
+
+  on <event> [<filter>] [while/if <condition>]
+    <actions...>
+
+  Event types:
+  - on victory [if <condition>] — mission won
+  - on defeat — mission lost
+  - on destroyed <target> [by <killer>] [#N] — ship(s) destroyed; #N = after Nth occurrence
+  - on damaged <target> / on damage <target> — ship takes damage
+  - on hit <target> [by <ship>] — ship is hit
+  - on respawn <type> while <condition>
+  - on empire destroyed [by player/ai] [if <condition>]
+  - on rebel objective hit
+  - on player checkpoint #N
+  - on player damaged while <condition>
+  - on empire fighter destroyed if <condition>
+  - on empire objective destroyed while <condition>
+  - on empire hit while <condition>
+
+  Condition syntax:
+  - player alive / player alive within <distance> of <target>
+  - <team> alive / no <team> here / no <type> ships here
+  - no <team> fighters here / no <team> fighters alive
+  - alive "<name>"
+  - player within <distance> of "<name>"
+  - player alive within trench
+  - <flag> <value> — user-defined flag check
+  - Compound: ( <cond> ) and ( <cond> ), ( <cond> ) or ( <cond> )
+
+  ---
+  Actions (within script blocks)
+
+  ┌───────────────────────────────────────────────────────────────────────────────┬────────────────────────────────────────────┐
+  │                                    Action                                     │                Description                 │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ wait <seconds>                                                                │ Pause before next action                   │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ alert <file.wav> [text]                                                       │ Play voice audio, optionally show subtitle │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ message <text>                                                                │ Show text message (no audio)               │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ chat <text>                                                                   │ Show chat-style message                    │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ sound <file.wav>                                                              │ Play audio without subtitle                │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ spawn <team> [objective] <type> ["Name"] [group N] at x y z [facing dx dy dz] │ Spawn a ship                               │
+  │  [respawn]                                                                    │                                            │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ jump <target>                                                                 │ Hyperspace jump: player ships, ai ships,   │
+  │                                                                               │ "Name"                                     │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ gametype <type>                                                               │ Change gametype mid-mission                │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ mission_objs <list>                                                           │ Update objective ship list                 │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ ai_ceasefire <bool>                                                           │ Toggle AI ceasefire                        │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ ai_flock <bool>                                                               │ Toggle AI flocking behavior                │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ ai_skill <N>                                                                  │ Adjust AI skill                            │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ respawn_time <seconds>                                                        │ Change respawn timer                       │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ end_delay <seconds>                                                           │ Delay before mission-end screen            │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ victory / defeat                                                              │ Trigger mission outcome immediately        │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ next_mission <id>                                                             │ Set which mission follows on win           │
+  ├───────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────┤
+  │ <flagname> <value>                                                            │ Set a user-defined flag variable           │
+  └───────────────────────────────────────────────────────────────────────────────┴────────────────────────────────────────────┘
+
+  ---
+  Flag Variables
+
+  Boolean or string variables declared and mutated inline — no declaration needed. Used to track scripted state across events:
+
+  cocky false        # initialize
+  cocky true         # set in event handler
+  on empire destroyed by player if cocky true   # check in condition
+
+  Common flags seen in the missions: cocky, stfu, hit1/hit2/hit3, frt_lost, int_lost, impressive, clean_work, endgame,
+  warspite_alive, phase, trench_run, trench_runners.
+

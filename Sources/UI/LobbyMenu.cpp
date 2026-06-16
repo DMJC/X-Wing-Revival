@@ -1295,6 +1295,10 @@ void LobbyMenu::Draw( void )
 		double bg_dist = Raptor::Game->Cfg.SettingAsDouble( "g_bg_dist", std::min<double>( 50000., Raptor::Game->Gfx.ZFar * 0.875 ) );
 		Raptor::Game->Gfx.DrawSphere3D( 0,0,0, bg_dist, 32, bg.CurrentFrame(), Graphics::TEXTURE_MODE_Y_ASIN );
 		glPopMatrix();
+
+		// Setup3D overwrote the projection matrix (per-eye in VR); restore the
+		// 2D projection before drawing the title text below.
+		DrawSetup();
 	}
 	else
 		Raptor::Game->Gfx.DrawRect2D( Rect.w / 2 - Rect.h, 0, Rect.w / 2 + Rect.h, Rect.h, Background.CurrentFrame(), 1.f, 1.f, 1.f, 1.f );
@@ -1809,8 +1813,12 @@ void LobbyMenuShipView::Draw( void )
 	
 	glPushMatrix();
 	glPushAttrib( GL_VIEWPORT_BIT );
-	Raptor::Game->Gfx.SetViewport( CalcRect.x, CalcRect.y, CalcRect.w, CalcRect.h );
-	
+	// In VR, shift the viewport to match the per-eye convergence offset that Setup2D applies for 2D content.
+	int vr_shift_x = 0;
+	if( Raptor::Game->Gfx.DrawTo && Raptor::Game->Gfx.DrawTo->VRProjection )
+		vr_shift_x = (int)( -Raptor::Game->Gfx.DrawTo->VRProjectionMatrix[ 8 ] * Raptor::Game->Gfx.W / 2. );
+	Raptor::Game->Gfx.SetViewport( CalcRect.x + vr_shift_x, CalcRect.y, CalcRect.w, CalcRect.h );
+
 	Camera cam;
 	cam.FOV = 20.;
 	if( CalcRect.w > CalcRect.h )
@@ -1829,7 +1837,7 @@ void LobbyMenuShipView::Draw( void )
 	if( ! Str::ContainsInsensitive( CurrentShip, "Gunner" ) )
 		pos.Pitch( -4. );
 	Raptor::Game->Gfx.Setup3D( &cam, CalcRect.h ? (CalcRect.w / (double) CalcRect.h) : 1. );
-	
+
 	bool use_shaders = Raptor::Game->Cfg.SettingAsBool("g_shader_enable");
 	if( use_shaders )
 	{

@@ -28,6 +28,7 @@
 #include "DeathStarBox.h"
 #include "ShipClass.h"
 #include "Checkpoint.h"
+#include "NavPoint.h"
 #include "SaitekX52Pro.h"
 
 
@@ -128,6 +129,7 @@ XWingGame::XWingGame( std::string version ) : RaptorGame( "X-Wing Revival", vers
 	Input.DefineControl( XWing::Control::TARGET_NEXT_PLAYER,      "TargetNextPlayer" );
 	Input.DefineControl( XWing::Control::TARGET_PREV_SUBSYSTEM,   "TargetPrevSystem" );
 	Input.DefineControl( XWing::Control::TARGET_NEXT_SUBSYSTEM,   "TargetNextSystem" );
+	Input.DefineControl( XWing::Control::TARGET_NEXT_NAV,         "TargetNextNav" );
 	Input.DefineControl( XWing::Control::SEAT_COCKPIT,            "Cockpit" );
 	Input.DefineControl( XWing::Control::SEAT_GUNNER1,            "Gunner1" );
 	Input.DefineControl( XWing::Control::SEAT_GUNNER2,            "Gunner2" );
@@ -150,6 +152,8 @@ XWingGame::XWingGame( std::string version ) : RaptorGame( "X-Wing Revival", vers
 	Input.DefineControl( XWing::Control::MENU,                    "MainMenu" );
 	Input.DefineControl( XWing::Control::PREFS,                   "PrefsMenu" );
 	Input.DefineControl( XWing::Control::PAUSE,                   "Pause" );
+	Input.DefineControl( XWing::Control::NAV_JUMP,                "NavJump" );
+	Input.DefineControl( XWing::Control::LAND,                    "Land" );
 }
 
 
@@ -207,6 +211,9 @@ void XWingGame::SetDefaultControls( void )
 	Cfg.KeyBinds[ SDLK_d            ] = XWing::Control::ROLL_LEFT;
 	Cfg.KeyBinds[ SDLK_f            ] = XWing::Control::ROLL_RIGHT;
 	Cfg.KeyBinds[ SDLK_g            ] = XWing::Control::TARGET_GROUPMATE;
+	Cfg.KeyBinds[ SDLK_n            ] = XWing::Control::TARGET_NEXT_NAV;
+	Cfg.KeyBinds[ SDLK_j            ] = XWing::Control::NAV_JUMP;
+	Cfg.KeyBinds[ SDLK_b            ] = XWing::Control::LAND;
 	Cfg.KeyBinds[ SDLK_h            ] = XWing::Control::TARGET_DOCKABLE;
 	Cfg.KeyBinds[ SDLK_k            ] = XWing::Control::EJECT;
 	Cfg.KeyBinds[ SDLK_x            ] = XWing::Control::MODE;
@@ -2357,6 +2364,7 @@ bool XWingGame::ControlPressed( uint8_t control )
 	bool target_prev_player = false;
 	bool target_next_subsystem = false;
 	bool target_prev_subsystem = false;
+	bool target_next_nav = false;
 	uint32_t *target_stored = NULL;
 	uint8_t *subsystem_stored = NULL;
 	bool observe_next = false;
@@ -2411,6 +2419,8 @@ bool XWingGame::ControlPressed( uint8_t control )
 		target_next_subsystem = true;
 		observe_next = true;
 	}
+	else if( control ==  XWing::Control::TARGET_NEXT_NAV  )
+		target_next_nav = true;
 	else if( control ==  XWing::Control::TARGET1  )
 	{
 		target_stored = &(StoredTargets[ 0 ]);
@@ -2443,6 +2453,79 @@ bool XWingGame::ControlPressed( uint8_t control )
 		change_view = true;
 	else if( control ==  XWing::Control::PAUSE  )
 		pause = true;
+	else if( control == XWing::Control::LAND )
+	{
+		if( Data.PropertyAsBool("landing_available") && (Data.PropertyAsString("gametype") == "objectives") )
+		{
+			uint32_t landing_ship_id = (uint32_t) Data.PropertyAsInt("landing_ship_id");
+
+			Ship *my_land_ship = NULL;
+			Ship *landing_ship = NULL;
+			for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
+			{
+				if( obj_iter->second->Type() != XWing::Object::SHIP )
+					continue;
+				Ship *s = (Ship*) obj_iter->second;
+				if( s->PlayerID == PlayerID )
+					my_land_ship = s;
+				if( s->ID == landing_ship_id )
+					landing_ship = s;
+			}
+
+			if( my_land_ship && (my_land_ship->Health > 0.) && !my_land_ship->JumpedOut
+			&&  landing_ship && (landing_ship->Health > 0.)
+			&&  (my_land_ship->Target == landing_ship->ID)
+			&&  (my_land_ship->Dist(landing_ship) <= 100.) )
+			{
+				Packet land( XWing::Packet::LAND );
+				Net.Send( &land );
+			}
+		}
+		return true;
+	}
+
+	else if( control ==  XWing::Control::NAV_JUMP  )
+	{
+		// Find the player's ship and the nearest visible nav point within 100 units.
+		Ship *my_nav_ship = NULL;
+		for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
+		{
+			if( (obj_iter->second->Type() == XWing::Object::SHIP) && (obj_iter->second->PlayerID == PlayerID) )
+			{
+				my_nav_ship = (Ship*) obj_iter->second;
+				break;
+			}
+		}
+		if( my_nav_ship && (my_nav_ship->Health > 0.) && !my_nav_ship->JumpedOut )
+		{
+			NavPoint *nearest = NULL;
+			double nearest_dist = 101.;
+			for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
+			{
+				if( obj_iter->second->Type() != XWing::Object::NAV_POINT )
+					continue;
+				NavPoint *np = (NavPoint*) obj_iter->second;
+				if( np->SystemNumber != my_nav_ship->SystemNumber )
+					continue;
+				bool visible = np->VariableName.empty() ? np->Visible : Data.PropertyAsBool(np->VariableName);
+				if( !visible )
+					continue;
+				double d = my_nav_ship->Dist(np);
+				if( d < nearest_dist )
+				{
+					nearest_dist = d;
+					nearest = np;
+				}
+			}
+			if( nearest )
+			{
+				Packet nav_jump( XWing::Packet::NAV_JUMP );
+				nav_jump.AddUInt( nearest->ID );
+				Net.Send( &nav_jump );
+			}
+		}
+		return true;
+	}
 	else
 		return false;
 	
@@ -2904,7 +2987,43 @@ bool XWingGame::ControlPressed( uint8_t control )
 		else
 			target_subsystem = 0;
 	}
-	
+	else if( my_ship && target_next_nav )
+	{
+		std::map<uint32_t,const GameObject*> potential_targets;
+		for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
+		{
+			if( obj_iter->second->Type() != XWing::Object::NAV_POINT )
+				continue;
+			const NavPoint *np = (const NavPoint*) obj_iter->second;
+			if( np->SystemNumber != my_ship->SystemNumber )
+				continue;
+			bool visible = np->VariableName.empty() ? np->Visible : Data.PropertyAsBool( np->VariableName );
+			if( !visible )
+				continue;
+			potential_targets[ np->ID ] = np;
+		}
+
+		std::map<uint32_t,const GameObject*>::iterator target_iter = potential_targets.find( target_id );
+		if( target_iter == potential_targets.end() )
+			target_iter = potential_targets.begin();
+		else
+		{
+			target_iter ++;
+			if( target_iter == potential_targets.end() )
+				target_iter = potential_targets.begin();
+		}
+
+		uint32_t id = (target_iter != potential_targets.end()) ? target_iter->first : 0;
+		if( !id || !potential_targets.size() )
+			Snd.Play( Res.GetSound("beep_error.wav") );
+		else if( id != target_id )
+		{
+			target_id = id;
+			target_subsystem = 0;
+			beep = "beep.wav";
+		}
+	}
+
 	if( my_turret )
 		my_turret->Target = target_id;
 	
@@ -4057,6 +4176,8 @@ GameObject *XWingGame::NewObject( uint32_t id, uint32_t type )
 		return new DeathStar( id );
 	else if( type == XWing::Object::CHECKPOINT )
 		return new Checkpoint( id );
+	else if( type == XWing::Object::NAV_POINT )
+		return new NavPoint( id );
 	else if( type == XWing::Object::SHIP_CLASS )
 		return new ShipClass( id );
 	

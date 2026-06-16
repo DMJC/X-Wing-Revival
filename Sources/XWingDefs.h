@@ -41,6 +41,8 @@ namespace XWing
 			REPAIR = 'Fix ',
 			REARM = 'Ammo',
 			JUMP_OUT = 'Jump',
+			NAV_JUMP = 'NavJ',
+			LAND = 'Land',
 			CHANGE_SEAT = 'Seat',
 			TOGGLE_COPILOT = 'CoPi',
 			ENGINE_SOUND = 'Engi',
@@ -65,7 +67,8 @@ namespace XWing
 			DEATH_STAR = 'Moon',
 			DEATH_STAR_BOX = 'aBox',
 			DOCKING_BAY = 'Dock',
-			CHECKPOINT = 'GoGo'
+			CHECKPOINT = 'GoGo',
+			NAV_POINT  = 'NavP'
 		};
 	}
 	
@@ -94,7 +97,8 @@ namespace XWing
 			BATTLE_OF_YAVIN = 'Yavn',
 			BATTLE_OF_ENDOR = 'Endr',
 			CAPITAL_SHIP_HUNT = 'Hunt',
-			FLEET_BATTLE = 'Flet'
+			FLEET_BATTLE = 'Flet',
+			OBJECTIVES = 'Obj '
 		};
 	}
 	
@@ -181,6 +185,7 @@ namespace XWing
 			TARGET_PREV_PLAYER,
 			TARGET_NEXT_SUBSYSTEM,
 			TARGET_PREV_SUBSYSTEM,
+			TARGET_NEXT_NAV,
 			SEAT_COCKPIT,
 			SEAT_GUNNER1,
 			SEAT_GUNNER2,
@@ -203,7 +208,9 @@ namespace XWing
 			MENU,
 			PREFS,
 			PAUSE,
-			
+			NAV_JUMP,
+			LAND,
+
 			COUNT
 		};
 	}

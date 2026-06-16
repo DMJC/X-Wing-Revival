@@ -12,6 +12,7 @@ class XWingServerAlert;
 #include "Ship.h"
 #include "ShipClass.h"
 #include "Mission.h"
+#include "NavPoint.h"
 
 
 class XWingServer : public RaptorServer
@@ -51,6 +52,13 @@ public:
 	std::map<uint8_t,int> TeamScores;
 	std::map<uint32_t,int> ShipScores;
 	std::set<uint16_t> Cheaters;
+
+	struct PendingNavJump {
+		double FireTime;
+		uint8_t DestSystem;
+		double DestX, DestY, DestZ;
+	};
+	std::map<uint16_t, PendingNavJump> PendingNavJumps;
 	
 	Clock CountdownTimer;
 	int CountdownFrom;

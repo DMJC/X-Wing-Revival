@@ -23,6 +23,7 @@
 #include "Obstacle.h"
 #include "Turret.h"
 #include "Checkpoint.h"
+#include "NavPoint.h"
 
 #ifdef WIN32
 #include "SaitekX52Pro.h"
@@ -94,12 +95,31 @@ RenderLayer::~RenderLayer()
 
 void RenderLayer::SetBackground( void )
 {
-	if( BackgroundName != Raptor::Game->Data.PropertyAsString("bg") )
+	// Determine the desired background: for multisystem missions use the player ship's system bg.
+	std::string desired_bg = Raptor::Game->Data.PropertyAsString("bg");
+	if( Raptor::Game->Data.PropertyAsBool("multisystem") )
 	{
-		BackgroundName = Raptor::Game->Data.PropertyAsString("bg");
-		
-		if( ! Raptor::Game->Data.PropertyAsString("bg").empty() )
-			Background.BecomeInstance( Raptor::Game->Res.GetAnimation( Raptor::Game->Data.PropertyAsString("bg") + std::string(".ani") ) );
+		uint8_t player_system = 0;
+		for( std::map<uint32_t,GameObject*>::const_iterator obj_iter = Raptor::Game->Data.GameObjects.begin(); obj_iter != Raptor::Game->Data.GameObjects.end(); obj_iter ++ )
+		{
+			if( (obj_iter->second->Type() == XWing::Object::SHIP) && (obj_iter->second->PlayerID == Raptor::Game->PlayerID) )
+			{
+				player_system = ((const Ship*)obj_iter->second)->SystemNumber;
+				break;
+			}
+		}
+		if( player_system > 0 )
+		{
+			std::string sys_bg_key = std::string("system_") + Num::ToString((int)player_system) + std::string("_bg");
+			desired_bg = Raptor::Game->Data.PropertyAsString( sys_bg_key, "stars" );
+		}
+	}
+
+	if( BackgroundName != desired_bg )
+	{
+		BackgroundName = desired_bg;
+		if( !BackgroundName.empty() )
+			Background.BecomeInstance( Raptor::Game->Res.GetAnimation( BackgroundName + std::string(".ani") ) );
 		else
 			Background.BecomeInstance( Raptor::Game->Res.GetAnimation("stars.ani") );
 	}
@@ -137,7 +157,7 @@ void RenderLayer::SetWorldLights( bool deathstar, float ambient_scale, const std
 		color[ 3 ].Set( 0.25, 0.125, 0.2, 1.f );
 		wrap_around[ 3 ] = 0.125;
 	}
-	else if( Raptor::Game->Data.PropertyAsString("bg") == "nebula" )
+	else if( BackgroundName == "nebula" )
 	{
 		ambient.Set( 0.75f, 0.7f, 0.75f, 1.f );
 		
@@ -161,7 +181,7 @@ void RenderLayer::SetWorldLights( bool deathstar, float ambient_scale, const std
 		color[ 3 ].Set( 0.01, 0.1, 0.05, 1.f );
 		wrap_around[ 3 ] = 0.125;
 	}
-	else if( Raptor::Game->Data.PropertyAsString("bg") == "nebula2" )
+	else if( BackgroundName == "nebula2" )
 	{
 		ambient.Set( 0.85f, 0.74f, 0.75f, 1.f );
 		
@@ -1783,12 +1803,14 @@ void RenderLayer::Draw( void )
 						}
 						else if( target_obj->Type() == XWing::Object::CHECKPOINT )
 							target_name = "Race Checkpoint";
+						else if( target_obj->Type() == XWing::Object::NAV_POINT )
+							target_name = ((const NavPoint*) target_obj)->Name;
 					}
-					
+
 					float red = 1.f, green = 0.f, blue = 0.f;
 					if( target_seeking_us && (fmod( target_obj->Lifetime.ElapsedSeconds(), 0.5 ) < 0.25) )
 						green = 1.f;
-					else if( target_obj->Type() == XWing::Object::CHECKPOINT )
+					else if( (target_obj->Type() == XWing::Object::CHECKPOINT) || (target_obj->Type() == XWing::Object::NAV_POINT) )
 					{
 						red = 0.f;
 						green = 1.f;
@@ -3400,7 +3422,79 @@ void RenderLayer::Draw( void )
 		{
 			// Here we'll draw target info, unless it's done via cockpit screens.
 			
-			if( (target || dead_target) && need_target_holo && ! jumped_out )
+			if( target_obj && (target_obj->Type() == XWing::Object::NAV_POINT) && need_target_holo && ! jumped_out )
+			{
+				// Show holographic nav point display.
+
+				const NavPoint *nav_target = (const NavPoint*) target_obj;
+				Vec3D vec_to_target( nav_target->X - observed_object->X, nav_target->Y - observed_object->Y, nav_target->Z - observed_object->Z );
+				int dist = vec_to_target.Length();
+
+				Pos3D holo_pos( nav_target ), head_pos( observed_object );
+
+				if( ! vr )
+				{
+					Camera cam_to_target( game->Cam );
+					cam_to_target.Fwd = vec_to_target.Unit();
+					cam_to_target.Up.Copy( &(observed_object->Up) );
+					cam_to_target.FixVectors();
+					cam_to_target.SetPos( nav_target->X, nav_target->Y, nav_target->Z );
+					cam_to_target.MoveAlong( &(cam_to_target.Fwd), -0.75 );
+					cam_to_target.Pitch( 25. );
+					cam_to_target.Yaw( game->LookYaw );
+					cam_to_target.Pitch( game->LookPitch );
+					game->Gfx.Setup3D( &(cam_to_target) );
+				}
+				else if( observed_turret )
+				{
+					head_pos = observed_turret->HeadPos();
+					holo_pos.SetPos( head_pos.X, head_pos.Y, head_pos.Z );
+					holo_pos.MoveAlong( &(head_pos.Fwd), 0.45 );
+					holo_pos.MoveAlong( &(head_pos.Up), -0.2 );
+				}
+				else if( observed_ship )
+				{
+					head_pos = observed_ship->HeadPosVR();
+					holo_pos.SetPos( head_pos.X, head_pos.Y, head_pos.Z );
+					holo_pos.MoveAlong( &(head_pos.Fwd), 0.675 );
+					holo_pos.MoveAlong( &(head_pos.Up), -0.315 );
+				}
+
+				Color holo_color( 0.f, 1.f, 1.f, 0.9f );
+
+				if( vr )
+				{
+					Pos3D text_pos( &head_pos );
+					text_pos.SetPos( holo_pos.X, holo_pos.Y, holo_pos.Z );
+					text_pos.Pitch( -45. );
+					text_pos.MoveAlong( &(text_pos.Up), -0.1 );
+					BigFont->DrawText3D( nav_target->Name, &text_pos, Font::ALIGN_BOTTOM_CENTER, 0.f, 1.f, 1.f, holo_color.Alpha, 0.0015 );
+					char dist_buf[ 32 ];
+					if( dist < 1000 )
+						snprintf( dist_buf, sizeof(dist_buf), "%5i", dist );
+					else
+						snprintf( dist_buf, sizeof(dist_buf), "%5.1fK", dist / 1000. );
+					text_pos.MoveAlong( &(text_pos.Up), -0.025 );
+					text_pos.MoveAlong( &(text_pos.Right), -0.075 );
+					BigFont->DrawText3D( "DIST:", &text_pos, Font::ALIGN_TOP_LEFT, holo_color.Red, holo_color.Green, holo_color.Blue, holo_color.Alpha, 0.001 );
+					text_pos.MoveAlong( &(text_pos.Right), 0.15 );
+					BigFont->DrawText3D( dist_buf, &text_pos, Font::ALIGN_TOP_RIGHT, holo_color.Red, holo_color.Green, holo_color.Blue, holo_color.Alpha, 0.001 );
+				}
+				else
+				{
+					game->Gfx.Setup2D();
+					BigFont->DrawText( nav_target->Name, Rect.x + Rect.w/2 + 1, Rect.h - 32,  Font::ALIGN_BOTTOM_CENTER, 0.f, 0.f, 0.f, 0.8f );
+					BigFont->DrawText( nav_target->Name, Rect.x + Rect.w/2,     Rect.h - 33, Font::ALIGN_BOTTOM_CENTER, 0.f, 1.f, 1.f, 1.f );
+					char dist_buf[ 32 ];
+					if( dist < 1000 )
+						snprintf( dist_buf, sizeof(dist_buf), "DIST:%5i",    dist );
+					else
+						snprintf( dist_buf, sizeof(dist_buf), " DIST:%5.1fK", dist / 1000. );
+					SmallFont->DrawText( dist_buf, Rect.x + Rect.w/2 + 1, Rect.h,     Font::ALIGN_BOTTOM_CENTER, 0.f, 0.f, 0.f, 0.8f );
+					SmallFont->DrawText( dist_buf, Rect.x + Rect.w/2,     Rect.h - 1, Font::ALIGN_BOTTOM_CENTER, holo_color.Red, holo_color.Green, holo_color.Blue, 1.f );
+				}
+			}
+			else if( (target || dead_target) && need_target_holo && ! jumped_out )
 			{
 				// Show holographic targetting display.
 				
@@ -3591,10 +3685,39 @@ void RenderLayer::Draw( void )
 			}
 			
 			
+			// Draw NavPoint markers for multisystem missions.
+			if( !jumped_out && observed_ship && game->Data.PropertyAsBool("multisystem") )
+			{
+				game->Gfx.Setup3D( &(game->Cam) );
+				for( std::map<uint32_t,GameObject*>::iterator obj_iter = game->Data.GameObjects.begin(); obj_iter != game->Data.GameObjects.end(); obj_iter ++ )
+				{
+					if( obj_iter->second->Type() != XWing::Object::NAV_POINT )
+						continue;
+					NavPoint *np = (NavPoint*) obj_iter->second;
+					if( np->SystemNumber != observed_ship->SystemNumber )
+						continue;
+					bool np_visible = np->VariableName.empty() ? np->Visible : game->Data.PropertyAsBool( np->VariableName );
+					if( !np_visible )
+						continue;
+
+					Pos3D label_pos( &(game->Cam) );
+					label_pos.SetPos( np->X, np->Y, np->Z );
+					BigFont->DrawText3D( np->Name, &label_pos, Font::ALIGN_BOTTOM_CENTER, 0.f,1.f,1.f,1.f, 0.0015 );
+
+					double np_dist = observed_ship->Dist( np );
+					char np_dist_buf[32];
+					if( np_dist < 1000. )
+						snprintf( np_dist_buf, sizeof(np_dist_buf), "%i", (int)np_dist );
+					else
+						snprintf( np_dist_buf, sizeof(np_dist_buf), "%.1fK", np_dist / 1000. );
+					BigFont->DrawText3D( np_dist_buf, &label_pos, Font::ALIGN_TOP_CENTER, 0.f,1.f,1.f,0.8f, 0.001 );
+				}
+			}
+
 			if( (jump_progress >= 1.25) && ! (vr || jumped_out) )
 			{
 				// Draw the radar.
-				
+
 				game->Gfx.Setup2D( game->Gfx.H / -2, game->Gfx.H / 2 );
 				double h = game->Gfx.H / 2.;
 				RadarDirectionFont->DrawText( "F", -1.304 * h, -0.829 * h, Font::ALIGN_TOP_RIGHT, 0.f, 0.f, 1.f, 0.75f, Raptor::Game->UIScale );
@@ -3609,7 +3732,7 @@ void RenderLayer::Draw( void )
 				for( std::map<uint32_t,GameObject*>::iterator obj_iter = game->Data.GameObjects.begin(); obj_iter != game->Data.GameObjects.end(); obj_iter ++ )
 				{
 					uint32_t type = obj_iter->second->Type();
-					if( ((type == XWing::Object::SHIP) || (type == XWing::Object::ASTEROID) || (type == XWing::Object::SHOT) || (type == XWing::Object::CHECKPOINT))
+					if( ((type == XWing::Object::SHIP) || (type == XWing::Object::ASTEROID) || (type == XWing::Object::SHOT) || (type == XWing::Object::CHECKPOINT) || (type == XWing::Object::NAV_POINT))
 					&&  (obj_iter->second != observed_object) )
 					{
 						GameObject *obj = obj_iter->second;
@@ -3691,7 +3814,20 @@ void RenderLayer::Draw( void )
 								radius = 0.0025;
 							}
 						}
-						
+						else if( type == XWing::Object::NAV_POINT )
+						{
+							NavPoint *nav_pt = (NavPoint*) obj;
+							if( !observed_ship || (nav_pt->SystemNumber != observed_ship->SystemNumber) )
+								continue;
+							bool nav_pt_visible = nav_pt->VariableName.empty() ? nav_pt->Visible : game->Data.PropertyAsBool( nav_pt->VariableName );
+							if( !nav_pt_visible )
+								continue;
+							red = 0.f;
+							green = 1.f;
+							blue = 1.f;
+							radius = 0.005;
+						}
+
 						game->Gfx.DrawCircle2D( x, y, radius, 6, 0, red, green, blue, 1.f );
 					}
 				}
@@ -3773,8 +3909,63 @@ void RenderLayer::Draw( void )
 	
 	float ui_scale = Raptor::Game->UIScale;
 	int text_x = Rect.x + Rect.w/2;
-	
-	
+
+
+	// Landing prompt for objectives missions.
+	if( !jumped_out && !cinematic && !vr && observed_ship
+	&&  (game->Data.PropertyAsString("gametype") == "objectives")
+	&&  game->Data.PropertyAsBool("landing_available") )
+	{
+		uint32_t landing_ship_id = (uint32_t) game->Data.PropertyAsInt("landing_ship_id");
+		if( landing_ship_id )
+		{
+			Ship *landing_ship = NULL;
+			for( std::map<uint32_t,GameObject*>::iterator obj_iter = game->Data.GameObjects.begin(); obj_iter != game->Data.GameObjects.end(); obj_iter ++ )
+			{
+				if( (obj_iter->second->Type() == XWing::Object::SHIP) && (obj_iter->second->ID == landing_ship_id) )
+				{
+					landing_ship = (Ship*) obj_iter->second;
+					break;
+				}
+			}
+			if( landing_ship && (landing_ship->Health > 0.)
+			&&  (observed_ship->Target == landing_ship_id)
+			&&  (observed_ship->Dist(landing_ship) <= 100.) )
+			{
+				game->Gfx.Setup2D();
+				int py = Rect.y + (int)(Rect.h * 0.35f);
+				BigFont->DrawText( "[B] Land", text_x + 1, py + 1, Font::ALIGN_MIDDLE_CENTER, 0.f,0.f,0.f,0.8f, ui_scale );
+				BigFont->DrawText( "[B] Land", text_x,     py,     Font::ALIGN_MIDDLE_CENTER, 0.f,1.f,0.f,1.f,  ui_scale );
+			}
+		}
+	}
+
+	// NavPoint jump prompt for multisystem missions.
+	if( !jumped_out && !cinematic && !vr && observed_ship && game->Data.PropertyAsBool("multisystem") )
+	{
+		for( std::map<uint32_t,GameObject*>::iterator obj_iter = game->Data.GameObjects.begin(); obj_iter != game->Data.GameObjects.end(); obj_iter ++ )
+		{
+			if( obj_iter->second->Type() != XWing::Object::NAV_POINT )
+				continue;
+			NavPoint *np = (NavPoint*) obj_iter->second;
+			if( np->SystemNumber != observed_ship->SystemNumber )
+				continue;
+			bool np_visible = np->VariableName.empty() ? np->Visible : game->Data.PropertyAsBool( np->VariableName );
+			if( !np_visible )
+				continue;
+			if( observed_ship->Dist(np) <= 100. )
+			{
+				std::string prompt = std::string("[J] Jump to System ") + Num::ToString( (int)np->TargetSystem );
+				int py = Rect.y + (int)(Rect.h * 0.35f);
+				game->Gfx.Setup2D();
+				BigFont->DrawText( prompt, text_x + 1, py + 1, Font::ALIGN_MIDDLE_CENTER, 0.f,0.f,0.f,0.8f, ui_scale );
+				BigFont->DrawText( prompt, text_x,     py,     Font::ALIGN_MIDDLE_CENTER, 0.f,1.f,1.f,1.f,  ui_scale );
+				break;
+			}
+		}
+	}
+
+
 	// If we're spectating, show who we're watching.
 	
 	if( (observed_player && (observed_player->ID == game->PlayerID)) || cinematic || vr )

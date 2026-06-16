@@ -66,6 +66,7 @@ void Ship::Clear( void )
 	TargetLock = 0.f;
 	TargetSubsystem = 0;
 	NextCheckpoint = 0;
+	SystemNumber = 0;
 	
 	EngineSoundDir = 0;
 	EngineSoundClock.Reset();
@@ -1476,7 +1477,8 @@ void Ship::AddToInitPacket( Packet *packet, int8_t precision )
 	packet->AddUChar( TargetSubsystem );
 	packet->AddChar( Num::UnitFloatTo8( (Target && LockingOn(Data->GetObject(Target))) ? (TargetLock / 2.f) : 0.f ) );
 	packet->AddUInt( NextCheckpoint );
-	
+	packet->AddUChar( SystemNumber );
+
 	packet->AddUChar( Subsystems.size() );
 	size_t subsystem_index = 0;
 	for( std::map<std::string,double>::const_iterator subsystem_iter = Subsystems.begin(); subsystem_iter != Subsystems.end(); subsystem_iter ++ )
@@ -1523,7 +1525,8 @@ void Ship::ReadFromInitPacket( Packet *packet, int8_t precision )
 	TargetSubsystem = packet->NextUChar();
 	TargetLock = Num::UnitFloatFrom8( packet->NextChar() ) * 2.f;
 	NextCheckpoint = packet->NextUInt();
-	
+	SystemNumber   = packet->NextUChar();
+
 	size_t subsystem_count = packet->NextUChar();
 	for( size_t i = 0; i < subsystem_count; i ++ )
 	{
@@ -1553,7 +1556,8 @@ void Ship::AddToUpdatePacketFromServer( Packet *packet, int8_t precision )
 		packet->AddUChar( Team );
 		packet->AddUChar( Group );
 		packet->AddUInt( Class ? Class->ID : 0 );
-		
+		packet->AddUChar( SystemNumber );
+
 		packet->AddUChar( SubsystemCenters.size() );
 		for( size_t subsystem_index = 0; subsystem_index < SubsystemCenters.size(); subsystem_index ++ )
 		{
@@ -1589,6 +1593,7 @@ void Ship::ReadFromUpdatePacketFromServer( Packet *packet, int8_t precision )
 		Group = packet->NextUChar();
 		const ShipClass *prev_class = Class;
 		SetClass( packet->NextUInt() ); // This also resets the ship and starts jump-in animation.
+		SystemNumber = packet->NextUChar();
 		if( (Class != prev_class) || ((Group != prev_group) && Raptor::Game->Cfg.SettingAsBool("g_group_skins",true)) || ((Category() == ShipClass::CATEGORY_CAPITAL) && (prev_health <= 0.)) )
 			ClientInit(); // Load model for new ship class (or refresh capital ship model).
 		
