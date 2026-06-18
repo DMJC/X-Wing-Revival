@@ -3,11 +3,14 @@ precision highp float;
 #endif
 
 
+// Fragment output:
+out vec4 FragColor;
+
 // Shader variable:
 uniform vec3 AmbientLight;
 
 
 void main( void )
 {
-	gl_FragColor = vec4( AmbientLight, 1.0 );
+	FragColor = vec4( AmbientLight, 1.0 );
 }

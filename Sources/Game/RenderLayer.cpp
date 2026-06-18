@@ -484,15 +484,16 @@ void RenderLayer::ClearBlastPoints( int blastpoints )
 
 void RenderLayer::Draw( void )
 {
-	glPushMatrix();
-	
+	Raptor::Game->Gfx.PushMatrix();
+
 	XWingGame *game = (XWingGame*) Raptor::Game;
-	
+
 	Rect.x = 0;
 	Rect.y = 0;
 	Rect.w = game->Gfx.W;
 	Rect.h = game->Gfx.H;
-	
+	DynamicBatch &Batch = game->Gfx.Batch;
+
 	bool vr = game->Head.VR && game->Gfx.DrawTo;
 	if( vr )
 	{
@@ -1464,24 +1465,20 @@ void RenderLayer::Draw( void )
 					blue  = std::max<float>( blue,  recent_hit );
 				}
 				
-				glColor4f( red, green, blue, 1.f );
-				
 				if( use_shaders )
 				{
 					game->ShaderMgr.Select( game->Res.GetShader("model_hud") );
 					game->ShaderMgr.ResumeShaders();
 					game->ShaderMgr.Set3f( "AmbientLight", red, green, blue );
 				}
-				
+
 				observed_ship->Draw();
-				
+
 				if( use_shaders )
 				{
 					game->ShaderMgr.StopShaders();
 					game->ShaderMgr.Select( game->Res.GetShader("model") );
 				}
-				
-				glColor4f( 1.f, 1.f, 1.f, 1.f );
 				
 				
 				// Show shield direction.
@@ -1519,18 +1516,18 @@ void RenderLayer::Draw( void )
 					
 					glPointSize( 1.f );
 					
-					glBegin( GL_POINTS );
+					Batch.Begin( GL_POINTS );
 						
 						float brightness = 1.;
 						int dots = (1. - observed_ship->Health / observed_ship->MaxHealth()) * display_noise * health_framebuffer->W * health_framebuffer->H / 66.6;
 						for( int i = 0; i < dots; i ++ )
 						{
 							brightness = Rand::Double( 0.5, 1. );
-							glColor4f( brightness, brightness, brightness, 1.f );
-							glVertex2d( Rand::Int( 0, health_framebuffer->W ), Rand::Int( 0, health_framebuffer->H ) );
+							Batch.Color4f( brightness, brightness, brightness, 1.f );
+							Batch.Vertex2d( Rand::Int( 0, health_framebuffer->W ), Rand::Int( 0, health_framebuffer->H ) );
 						}
 						
-					glEnd();
+					Batch.End();
 				}
 			}
 			
@@ -1618,12 +1615,11 @@ void RenderLayer::Draw( void )
 							else
 							{
 								// Subsystem has no corresponding object in client-side model, so just show the center point.
-								glColor4f( 1.f, 1.f, 1.f, 1.f );
 								Pos3D pos = target_ship->TargetCenter( observed_ship->TargetSubsystem );
 								glPointSize( 7.f );
-								glBegin( GL_POINTS );
-									glVertex3d( pos.X, pos.Y, pos.Z );
-								glEnd();
+								Batch.Begin( GL_POINTS );
+									Batch.Vertex3d( pos.X, pos.Y, pos.Z );
+								Batch.End();
 							}
 						}
 						
@@ -1930,18 +1926,18 @@ void RenderLayer::Draw( void )
 					
 					glPointSize( 1.f );
 					
-					glBegin( GL_POINTS );
+					Batch.Begin( GL_POINTS );
 						
 						float brightness = 1.;
 						int dots = (1. - observed_ship->Health / observed_ship->MaxHealth()) * display_noise * target_framebuffer->W * target_framebuffer->H / 66.6;
 						for( int i = 0; i < dots; i ++ )
 						{
 							brightness = Rand::Double( 0.5, 1. );
-							glColor4f( brightness, brightness, brightness, 1.f );
-							glVertex2d( Rand::Int( 0, target_framebuffer->W ), Rand::Int( 0, target_framebuffer->H ) );
+							Batch.Color4f( brightness, brightness, brightness, 1.f );
+							Batch.Vertex2d( Rand::Int( 0, target_framebuffer->W ), Rand::Int( 0, target_framebuffer->H ) );
 						}
 						
-					glEnd();
+					Batch.End();
 				}
 			}
 			
@@ -1969,131 +1965,136 @@ void RenderLayer::Draw( void )
 					if( (lock_wait < 0.9f) && ! lock_blink )
 					{
 						// Draw red targeting lines.
-						
+
 						double lock_x = (intercept_framebuffer->W / 2) * lock_wait;
-						glColor4f( 1.f, 0.f, 0.f, 1.f );
 						glLineWidth( 4.f );
-						
-						glBegin( GL_LINES );
-							glVertex2d( intercept_framebuffer->W / 2 - lock_x, 10 );
-							glVertex2d( intercept_framebuffer->W / 2 - lock_x, intercept_framebuffer->H - 60 );
-							glVertex2d( intercept_framebuffer->W / 2 + lock_x, 10 );
-							glVertex2d( intercept_framebuffer->W / 2 + lock_x, intercept_framebuffer->H - 60 );
-						glEnd();
-						
+
+						Batch.Begin( GL_LINES );
+							Batch.Color4f( 1.f, 0.f, 0.f, 1.f );
+							Batch.Vertex2d( intercept_framebuffer->W / 2 - lock_x, 10 );
+							Batch.Vertex2d( intercept_framebuffer->W / 2 - lock_x, intercept_framebuffer->H - 60 );
+							Batch.Vertex2d( intercept_framebuffer->W / 2 + lock_x, 10 );
+							Batch.Vertex2d( intercept_framebuffer->W / 2 + lock_x, intercept_framebuffer->H - 60 );
+						Batch.End();
+
 						if( lock_wait == 0.f )
 						{
-							glBegin( GL_LINES );
-								glVertex2d( 10, (intercept_framebuffer->H - 50) / 2 );
-								glVertex2d( intercept_framebuffer->W - 10, (intercept_framebuffer->H - 50) / 2 );
-							glEnd();
+							Batch.Begin( GL_LINES );
+								Batch.Color4f( 1.f, 0.f, 0.f, 1.f );
+								Batch.Vertex2d( 10, (intercept_framebuffer->H - 50) / 2 );
+								Batch.Vertex2d( intercept_framebuffer->W - 10, (intercept_framebuffer->H - 50) / 2 );
+							Batch.End();
 						}
 					}
-					
+
 					// Draw targeting box outlines.
-					
-					glColor4f( 1.f, 1.f, 0.f, 1.f );
-					
+
 					glLineWidth( 3.f );
-					
-					glBegin( GL_LINE_STRIP );
-						glVertex2d( 10, 10 );
-						glVertex2d( 10, intercept_framebuffer->H - 60 );
-						glVertex2d( intercept_framebuffer->W - 10, intercept_framebuffer->H - 60 );
-						glVertex2d( intercept_framebuffer->W - 10, 10 );
-						glVertex2d( 10, 10 );
-					glEnd();
-					
-					glBegin( GL_LINE_STRIP );
-						glVertex2d( intercept_framebuffer->W / 2 - 80, intercept_framebuffer->H );
-						glVertex2d( intercept_framebuffer->W / 2 - 80, intercept_framebuffer->H - 55 );
-						glVertex2d( intercept_framebuffer->W / 2 + 80, intercept_framebuffer->H - 55 );
-						glVertex2d( intercept_framebuffer->W / 2 + 80, intercept_framebuffer->H );
-					glEnd();
-					
+
+					Batch.Begin( GL_LINE_STRIP );
+						Batch.Color4f( 1.f, 1.f, 0.f, 1.f );
+						Batch.Vertex2d( 10, 10 );
+						Batch.Vertex2d( 10, intercept_framebuffer->H - 60 );
+						Batch.Vertex2d( intercept_framebuffer->W - 10, intercept_framebuffer->H - 60 );
+						Batch.Vertex2d( intercept_framebuffer->W - 10, 10 );
+						Batch.Vertex2d( 10, 10 );
+					Batch.End();
+
+					Batch.Begin( GL_LINE_STRIP );
+						Batch.Color4f( 1.f, 1.f, 0.f, 1.f );
+						Batch.Vertex2d( intercept_framebuffer->W / 2 - 80, intercept_framebuffer->H );
+						Batch.Vertex2d( intercept_framebuffer->W / 2 - 80, intercept_framebuffer->H - 55 );
+						Batch.Vertex2d( intercept_framebuffer->W / 2 + 80, intercept_framebuffer->H - 55 );
+						Batch.Vertex2d( intercept_framebuffer->W / 2 + 80, intercept_framebuffer->H );
+					Batch.End();
+
 					if( lock_blink )
 					{
 						// Flash red chevrons when locked on.
-						
-						glColor4f( 1.f, 0.f, 0.f, 1.f );
-						
-						glBegin( GL_TRIANGLE_FAN );
-							glVertex2d( cx + 10, cy + 10 );
-							glVertex2d( cx + 30, cy + 50 );
-							glVertex2d( cx + 30, cy + 30 );
-							glVertex2d( cx + 50, cy + 30 );
-						glEnd();
-						
-						glBegin( GL_TRIANGLE_FAN );
-							glVertex2d( cx - 10, cy + 10 );
-							glVertex2d( cx - 30, cy + 50 );
-							glVertex2d( cx - 30, cy + 30 );
-							glVertex2d( cx - 50, cy + 30 );
-						glEnd();
-						
-						glBegin( GL_TRIANGLE_FAN );
-							glVertex2d( cx + 10, cy - 10 );
-							glVertex2d( cx + 30, cy - 50 );
-							glVertex2d( cx + 30, cy - 30 );
-							glVertex2d( cx + 50, cy - 30 );
-						glEnd();
-						
-						glBegin( GL_TRIANGLE_FAN );
-							glVertex2d( cx - 10, cy - 10 );
-							glVertex2d( cx - 30, cy - 50 );
-							glVertex2d( cx - 30, cy - 30 );
-							glVertex2d( cx - 50, cy - 30 );
-						glEnd();
+
+						Batch.Begin( GL_TRIANGLE_FAN );
+							Batch.Color4f( 1.f, 0.f, 0.f, 1.f );
+							Batch.Vertex2d( cx + 10, cy + 10 );
+							Batch.Vertex2d( cx + 30, cy + 50 );
+							Batch.Vertex2d( cx + 30, cy + 30 );
+							Batch.Vertex2d( cx + 50, cy + 30 );
+						Batch.End();
+
+						Batch.Begin( GL_TRIANGLE_FAN );
+							Batch.Color4f( 1.f, 0.f, 0.f, 1.f );
+							Batch.Vertex2d( cx - 10, cy + 10 );
+							Batch.Vertex2d( cx - 30, cy + 50 );
+							Batch.Vertex2d( cx - 30, cy + 30 );
+							Batch.Vertex2d( cx - 50, cy + 30 );
+						Batch.End();
+
+						Batch.Begin( GL_TRIANGLE_FAN );
+							Batch.Color4f( 1.f, 0.f, 0.f, 1.f );
+							Batch.Vertex2d( cx + 10, cy - 10 );
+							Batch.Vertex2d( cx + 30, cy - 50 );
+							Batch.Vertex2d( cx + 30, cy - 30 );
+							Batch.Vertex2d( cx + 50, cy - 30 );
+						Batch.End();
+
+						Batch.Begin( GL_TRIANGLE_FAN );
+							Batch.Color4f( 1.f, 0.f, 0.f, 1.f );
+							Batch.Vertex2d( cx - 10, cy - 10 );
+							Batch.Vertex2d( cx - 30, cy - 50 );
+							Batch.Vertex2d( cx - 30, cy - 30 );
+							Batch.Vertex2d( cx - 50, cy - 30 );
+						Batch.End();
 					}
 					else if( target && (target->Category() == ShipClass::CATEGORY_TARGET) && (lock_wait > 0.f) && ! target->CanCollideWithOwnType() )
 					{
 						// Draw Death Star trench grid lines.
-						
+
 						glLineWidth( 2.f );
-						
-						glBegin( GL_LINES );
-							
-							glVertex2d( cx, cy );
-							glVertex2d( cx - (intercept_framebuffer->H / 2 - 35) / 1.25, 10 );
-							glVertex2d( cx, cy );
-							glVertex2d( cx + (intercept_framebuffer->H / 2 - 35) / 1.25, 10 );
-							glVertex2d( cx, cy );
-							glVertex2d( cx - (intercept_framebuffer->H / 2 - 35) / 1.25, intercept_framebuffer->H - 60 );
-							glVertex2d( cx, cy );
-							glVertex2d( cx + (intercept_framebuffer->H / 2 - 35) / 1.25, intercept_framebuffer->H - 60 );
-							
-							glVertex2d( cx, cy );
-							glVertex2d( 30, 10 );
-							glVertex2d( cx, cy );
-							glVertex2d( 30, intercept_framebuffer->H - 60 );
-							glVertex2d( cx, cy );
-							glVertex2d( intercept_framebuffer->W - 30, 10 );
-							glVertex2d( cx, cy );
-							glVertex2d( intercept_framebuffer->W - 30, intercept_framebuffer->H - 60 );
-							
-							glVertex2d( cx, cy );
-							glVertex2d( 10, 10 + (intercept_framebuffer->H - 70) * 0.31 );
-							glVertex2d( cx, cy );
-							glVertex2d( 10, 10 + (intercept_framebuffer->H - 70) * 0.69 );
-							glVertex2d( cx, cy );
-							glVertex2d( intercept_framebuffer->W - 10, 10 + (intercept_framebuffer->H - 70) * 0.31 );
-							glVertex2d( cx, cy );
-							glVertex2d( intercept_framebuffer->W - 10, 10 + (intercept_framebuffer->H - 70) * 0.69 );
-							
-						glEnd();
-						
+
+						Batch.Begin( GL_LINES );
+							Batch.Color4f( 1.f, 1.f, 0.f, 1.f );
+
+							Batch.Vertex2d( cx, cy );
+							Batch.Vertex2d( cx - (intercept_framebuffer->H / 2 - 35) / 1.25, 10 );
+							Batch.Vertex2d( cx, cy );
+							Batch.Vertex2d( cx + (intercept_framebuffer->H / 2 - 35) / 1.25, 10 );
+							Batch.Vertex2d( cx, cy );
+							Batch.Vertex2d( cx - (intercept_framebuffer->H / 2 - 35) / 1.25, intercept_framebuffer->H - 60 );
+							Batch.Vertex2d( cx, cy );
+							Batch.Vertex2d( cx + (intercept_framebuffer->H / 2 - 35) / 1.25, intercept_framebuffer->H - 60 );
+
+							Batch.Vertex2d( cx, cy );
+							Batch.Vertex2d( 30, 10 );
+							Batch.Vertex2d( cx, cy );
+							Batch.Vertex2d( 30, intercept_framebuffer->H - 60 );
+							Batch.Vertex2d( cx, cy );
+							Batch.Vertex2d( intercept_framebuffer->W - 30, 10 );
+							Batch.Vertex2d( cx, cy );
+							Batch.Vertex2d( intercept_framebuffer->W - 30, intercept_framebuffer->H - 60 );
+
+							Batch.Vertex2d( cx, cy );
+							Batch.Vertex2d( 10, 10 + (intercept_framebuffer->H - 70) * 0.31 );
+							Batch.Vertex2d( cx, cy );
+							Batch.Vertex2d( 10, 10 + (intercept_framebuffer->H - 70) * 0.69 );
+							Batch.Vertex2d( cx, cy );
+							Batch.Vertex2d( intercept_framebuffer->W - 10, 10 + (intercept_framebuffer->H - 70) * 0.31 );
+							Batch.Vertex2d( cx, cy );
+							Batch.Vertex2d( intercept_framebuffer->W - 10, 10 + (intercept_framebuffer->H - 70) * 0.69 );
+
+						Batch.End();
+
 						double dist = observed_ship->Dist( target_obj );
 						for( int i = 0; i < 400; i += 100 )
 						{
 							double x = (intercept_framebuffer->W / 2 - 10) * pow( 1. - fmod( dist + i, 400. ) / 400., 2.0 );
 							double y = std::min<double>( x * 1.25, intercept_framebuffer->H / 2 - 35 );
-							
-							glBegin( GL_LINE_STRIP );
-								glVertex2d( cx - x, cy - y );
-								glVertex2d( cx - x, cy + y );
-								glVertex2d( cx + x, cy + y );
-								glVertex2d( cx + x, cy - y );
-							glEnd();
+
+							Batch.Begin( GL_LINE_STRIP );
+								Batch.Color4f( 1.f, 1.f, 0.f, 1.f );
+								Batch.Vertex2d( cx - x, cy - y );
+								Batch.Vertex2d( cx - x, cy + y );
+								Batch.Vertex2d( cx + x, cy + y );
+								Batch.Vertex2d( cx + x, cy - y );
+							Batch.End();
 						}
 					}
 					else if( target && (target->Health > 0.) && (lock_wait > 0.f) )
@@ -2169,59 +2170,58 @@ void RenderLayer::Draw( void )
 						b = 1.f;
 					}
 					
-					glColor4f( r, g, b, 1.f );
-					
-					glBegin( GL_LINES );
-						
+					Batch.Begin( GL_LINES );
+						Batch.Color4f( r, g, b, 1.f );
+
 						// Top
-						glVertex2d( -1.3, -2. );
-						glVertex2d( 0., -0.25 );
-						glVertex2d( 0., -0.25 );
-						glVertex2d( 1.3, -2. );
-						
+						Batch.Vertex2d( -1.3, -2. );
+						Batch.Vertex2d( 0., -0.25 );
+						Batch.Vertex2d( 0., -0.25 );
+						Batch.Vertex2d( 1.3, -2. );
+
 						// Bottom
-						glVertex2d( -1.3, 2. );
-						glVertex2d( 0., 0.25 );
-						glVertex2d( 0., 0.25 );
-						glVertex2d( 1.3, 2. );
-						
+						Batch.Vertex2d( -1.3, 2. );
+						Batch.Vertex2d( 0., 0.25 );
+						Batch.Vertex2d( 0., 0.25 );
+						Batch.Vertex2d( 1.3, 2. );
+
 						// Left
-						glVertex2d( -2., -1.2 );
-						glVertex2d( -0.25, 0. );
-						glVertex2d( -0.25, 0. );
-						glVertex2d( -2., 1.2 );
-						
+						Batch.Vertex2d( -2., -1.2 );
+						Batch.Vertex2d( -0.25, 0. );
+						Batch.Vertex2d( -0.25, 0. );
+						Batch.Vertex2d( -2., 1.2 );
+
 						// Right
-						glVertex2d( 2., -1.2 );
-						glVertex2d( 0.25, 0. );
-						glVertex2d( 0.25, 0. );
-						glVertex2d( 2., 1.2 );
-						
+						Batch.Vertex2d( 2., -1.2 );
+						Batch.Vertex2d( 0.25, 0. );
+						Batch.Vertex2d( 0.25, 0. );
+						Batch.Vertex2d( 2., 1.2 );
+
 						// Top-Left
-						glVertex2d( -0.07, 0.33 );
-						glVertex2d( -0.22, 0.22 );
-						glVertex2d( -0.22, 0.22 );
-						glVertex2d( -0.33, 0.07 );
-						
+						Batch.Vertex2d( -0.07, 0.33 );
+						Batch.Vertex2d( -0.22, 0.22 );
+						Batch.Vertex2d( -0.22, 0.22 );
+						Batch.Vertex2d( -0.33, 0.07 );
+
 						// Top-Right
-						glVertex2d( 0.07, 0.33 );
-						glVertex2d( 0.22, 0.22 );
-						glVertex2d( 0.22, 0.22 );
-						glVertex2d( 0.33, 0.07 );
-						
+						Batch.Vertex2d( 0.07, 0.33 );
+						Batch.Vertex2d( 0.22, 0.22 );
+						Batch.Vertex2d( 0.22, 0.22 );
+						Batch.Vertex2d( 0.33, 0.07 );
+
 						// Bottom-Right
-						glVertex2d( 0.07, -0.33 );
-						glVertex2d( 0.22, -0.22 );
-						glVertex2d( 0.22, -0.22 );
-						glVertex2d( 0.33, -0.07 );
-						
+						Batch.Vertex2d( 0.07, -0.33 );
+						Batch.Vertex2d( 0.22, -0.22 );
+						Batch.Vertex2d( 0.22, -0.22 );
+						Batch.Vertex2d( 0.33, -0.07 );
+
 						// Bottom-Left
-						glVertex2d( -0.07, -0.33 );
-						glVertex2d( -0.22, -0.22 );
-						glVertex2d( -0.22, -0.22 );
-						glVertex2d( -0.33, -0.07 );
-						
-					glEnd();
+						Batch.Vertex2d( -0.07, -0.33 );
+						Batch.Vertex2d( -0.22, -0.22 );
+						Batch.Vertex2d( -0.22, -0.22 );
+						Batch.Vertex2d( -0.33, -0.07 );
+
+					Batch.End();
 					
 					
 					// Draw the target dots.
@@ -2258,15 +2258,14 @@ void RenderLayer::Draw( void )
 							
 							glLineWidth( 1.f );
 							
-							if( observed_ship->SelectedWeapon == Shot::TYPE_ION_CANNON )
-								glColor4f( 0.f, 0.25f, 1.f, 1.f );
-							else
-								glColor4f( 0.f, 0.5f, 0.f, 1.f );
-							
-							glBegin( GL_LINES );
-								glVertex2d( tx, ty );
-								glVertex2d( ix, iy );
-							glEnd();
+							Batch.Begin( GL_LINES );
+								if( observed_ship->SelectedWeapon == Shot::TYPE_ION_CANNON )
+									Batch.Color4f( 0.f, 0.25f, 1.f, 1.f );
+								else
+									Batch.Color4f( 0.f, 0.5f, 0.f, 1.f );
+								Batch.Vertex2d( tx, ty );
+								Batch.Vertex2d( ix, iy );
+							Batch.End();
 						}
 						
 						if( draw_target )
@@ -2300,7 +2299,7 @@ void RenderLayer::Draw( void )
 					
 					glPointSize( 1.f );
 					
-					glBegin( GL_POINTS );
+					Batch.Begin( GL_POINTS );
 						
 						int dots = (1. - observed_ship->Health / observed_ship->MaxHealth()) * display_noise * intercept_framebuffer->W * intercept_framebuffer->H / 66.6;
 						for( int i = 0; i < dots; i ++ )
@@ -2311,11 +2310,11 @@ void RenderLayer::Draw( void )
 								r = g = brightness - 0.5f;
 							else if( ! lock_display )
 								r = b = brightness - 0.5f;
-							glColor4f( r, g, b, 1.f );
-							glVertex2d( Rand::Int( 0, intercept_framebuffer->W ), Rand::Int( 0, intercept_framebuffer->H ) );
+							Batch.Color4f( r, g, b, 1.f );
+							Batch.Vertex2d( Rand::Int( 0, intercept_framebuffer->W ), Rand::Int( 0, intercept_framebuffer->H ) );
 						}
 						
-					glEnd();
+					Batch.End();
 				}
 			}
 			
@@ -2363,7 +2362,6 @@ void RenderLayer::Draw( void )
 	
 	if( game->View == XWing::View::INSTRUMENTS )
 	{
-		glColor4f( 1.f, 1.f, 1.f, 1.f );
 		game->Gfx.Clear();
 		
 		if( observed_ship && (observed_ship->Health > 0.) )
@@ -2411,8 +2409,7 @@ void RenderLayer::Draw( void )
 		MessageOutput->Visible = MessageInput->Visible;
 		MessageOutput->ScrollTime = game->OverlayScroll;
 		
-		glColor4f( 1.f, 1.f, 1.f, 1.f );
-		glPopMatrix();
+		game->Gfx.PopMatrix();
 		return;
 	}
 	
@@ -2946,9 +2943,9 @@ void RenderLayer::Draw( void )
 			if( blastpoints && bp_vec && game->ShaderMgr.Active() )
 				SetBlastPoints( blastpoints, bp_vec );
 			
-			glPushMatrix();
+			game->Gfx.PushMatrix();
 			obj_iter->second->Draw();
-			glPopMatrix();
+			game->Gfx.PopMatrix();
 		}
 		
 		if( game->ShaderMgr.Active() )
@@ -2973,9 +2970,9 @@ void RenderLayer::Draw( void )
 						SetBlastPoints( blastpoints, &(obj->BlastPoints) );
 					*/
 					
-					glPushMatrix();
+					game->Gfx.PushMatrix();
 					obj->Draw();
-					glPopMatrix();
+					game->Gfx.PopMatrix();
 				}
 			}
 			
@@ -2991,8 +2988,6 @@ void RenderLayer::Draw( void )
 		if( use_shaders )
 			game->ShaderMgr.StopShaders();
 		
-		glColor4f( 1.f, 1.f, 1.f, 1.f );
-		
 		
 		// Draw anything with alpha back-to-front.
 		
@@ -3003,8 +2998,8 @@ void RenderLayer::Draw( void )
 		
 		for( std::multimap<double,Renderable>::reverse_iterator renderable = sorted_renderables.rbegin(); renderable != sorted_renderables.rend(); renderable ++ )
 		{
-			glPushMatrix();
-			
+			game->Gfx.PushMatrix();
+
 			if( renderable->second.ShotPtr )
 				renderable->second.ShotPtr->Draw();
 			else if( renderable->second.EffectPtr )
@@ -3020,17 +3015,17 @@ void RenderLayer::Draw( void )
 						SetBlastPoints( blastpoints, &(renderable->second.ShipPtr->BlastPoints) );
 				}
 				glDepthMask( GL_TRUE );
-				
+
 				renderable->second.ShipPtr->Draw();
-				
+
 				glDepthMask( GL_FALSE );
 				if( use_shaders )
 					game->ShaderMgr.StopShaders();
 			}
 			else if( renderable->second.EnginePtr )
 				renderable->second.EnginePtr->DrawAt( &(renderable->second.EnginePos), renderable->second.EngineAlpha, renderable->second.EngineScale );
-			
-			glPopMatrix();
+
+			game->Gfx.PopMatrix();
 		}
 		
 		glDepthMask( GL_TRUE );
@@ -3052,9 +3047,7 @@ void RenderLayer::Draw( void )
 		game->ShaderMgr.StopShaders();
 	}
 	
-	glColor4f( 1.f, 1.f, 1.f, 1.f );
-	
-	
+
 	// Draw 2D UI elements.
 	
 	GameObject *observed_object = NULL;
@@ -3297,16 +3290,16 @@ void RenderLayer::Draw( void )
 			// Draw the 3D crosshair.
 			
 			glDisable( GL_DEPTH_TEST );
-			glDisable( GL_TEXTURE_2D );
-			
+			game->Gfx.BindTexture( 0 );
+
 			Pos3D crosshair_pos = (observed_object == observed_ship) ? observed_ship->HeadPos() : observed_turret->HeadPos();
 			crosshair_pos.MoveAlong( &(crosshair_pos.Fwd), 100. );
-			glColor4f( crosshair_red, crosshair_green, crosshair_blue, std::min<float>( 1.f, jump_progress - 1. ) );
-			
+
 			glPointSize( 2.f );
-			glBegin( GL_POINTS );
-				glVertex3d( crosshair_pos.X, crosshair_pos.Y, crosshair_pos.Z );
-			glEnd();
+			Batch.Begin( GL_POINTS );
+				Batch.Color4f( crosshair_red, crosshair_green, crosshair_blue, std::min<float>( 1.f, jump_progress - 1. ) );
+				Batch.Vertex3d( crosshair_pos.X, crosshair_pos.Y, crosshair_pos.Z );
+			Batch.End();
 			
 			Vec3D up( &(crosshair_pos.Up) );
 			Vec3D right( &(crosshair_pos.Right) );
@@ -3319,24 +3312,25 @@ void RenderLayer::Draw( void )
 			
 			// Draw lines for all selected weapon ports.
 			glLineWidth( game->Cfg.SettingAsDouble("g_crosshair_thickness",1.5) );
-			glBegin( GL_LINES );
-				glVertex3d( crosshair_pos.X - right.X + up.X, crosshair_pos.Y - right.Y + up.Y, crosshair_pos.Z - right.Z + up.Z );
-				glVertex3d( crosshair_pos.X - right.X / 2. + up.X, crosshair_pos.Y - right.Y / 2. + up.Y, crosshair_pos.Z - right.Z / 2. + up.Z );
-				glVertex3d( crosshair_pos.X - right.X + up.X, crosshair_pos.Y - right.Y + up.Y, crosshair_pos.Z - right.Z + up.Z );
-				glVertex3d( crosshair_pos.X - right.X + up.X / 2., crosshair_pos.Y - right.Y + up.Y / 2., crosshair_pos.Z - right.Z + up.Z / 2. );
-				glVertex3d( crosshair_pos.X + right.X + up.X, crosshair_pos.Y + right.Y + up.Y, crosshair_pos.Z + right.Z + up.Z );
-				glVertex3d( crosshair_pos.X + right.X / 2. + up.X, crosshair_pos.Y + right.Y / 2. + up.Y, crosshair_pos.Z + right.Z / 2. + up.Z );
-				glVertex3d( crosshair_pos.X + right.X + up.X, crosshair_pos.Y + right.Y + up.Y, crosshair_pos.Z + right.Z + up.Z );
-				glVertex3d( crosshair_pos.X + right.X + up.X / 2., crosshair_pos.Y + right.Y + up.Y / 2., crosshair_pos.Z + right.Z + up.Z / 2. );
-				glVertex3d( crosshair_pos.X + right.X - up.X, crosshair_pos.Y + right.Y - up.Y, crosshair_pos.Z + right.Z - up.Z );
-				glVertex3d( crosshair_pos.X + right.X / 2. - up.X, crosshair_pos.Y + right.Y / 2. - up.Y, crosshair_pos.Z + right.Z / 2. - up.Z );
-				glVertex3d( crosshair_pos.X + right.X - up.X, crosshair_pos.Y + right.Y - up.Y, crosshair_pos.Z + right.Z - up.Z );
-				glVertex3d( crosshair_pos.X + right.X - up.X / 2., crosshair_pos.Y + right.Y - up.Y / 2., crosshair_pos.Z + right.Z - up.Z / 2. );
-				glVertex3d( crosshair_pos.X - right.X - up.X, crosshair_pos.Y - right.Y - up.Y, crosshair_pos.Z - right.Z - up.Z );
-				glVertex3d( crosshair_pos.X - right.X / 2. - up.X, crosshair_pos.Y - right.Y / 2. - up.Y, crosshair_pos.Z - right.Z / 2. - up.Z );
-				glVertex3d( crosshair_pos.X - right.X - up.X, crosshair_pos.Y - right.Y - up.Y, crosshair_pos.Z - right.Z - up.Z );
-				glVertex3d( crosshair_pos.X - right.X - up.X / 2., crosshair_pos.Y - right.Y - up.Y / 2., crosshair_pos.Z - right.Z - up.Z / 2. );
-				
+			Batch.Begin( GL_LINES );
+				Batch.Color4f( crosshair_red, crosshair_green, crosshair_blue, std::min<float>( 1.f, jump_progress - 1. ) );
+				Batch.Vertex3d( crosshair_pos.X - right.X + up.X, crosshair_pos.Y - right.Y + up.Y, crosshair_pos.Z - right.Z + up.Z );
+				Batch.Vertex3d( crosshair_pos.X - right.X / 2. + up.X, crosshair_pos.Y - right.Y / 2. + up.Y, crosshair_pos.Z - right.Z / 2. + up.Z );
+				Batch.Vertex3d( crosshair_pos.X - right.X + up.X, crosshair_pos.Y - right.Y + up.Y, crosshair_pos.Z - right.Z + up.Z );
+				Batch.Vertex3d( crosshair_pos.X - right.X + up.X / 2., crosshair_pos.Y - right.Y + up.Y / 2., crosshair_pos.Z - right.Z + up.Z / 2. );
+				Batch.Vertex3d( crosshair_pos.X + right.X + up.X, crosshair_pos.Y + right.Y + up.Y, crosshair_pos.Z + right.Z + up.Z );
+				Batch.Vertex3d( crosshair_pos.X + right.X / 2. + up.X, crosshair_pos.Y + right.Y / 2. + up.Y, crosshair_pos.Z + right.Z / 2. + up.Z );
+				Batch.Vertex3d( crosshair_pos.X + right.X + up.X, crosshair_pos.Y + right.Y + up.Y, crosshair_pos.Z + right.Z + up.Z );
+				Batch.Vertex3d( crosshair_pos.X + right.X + up.X / 2., crosshair_pos.Y + right.Y + up.Y / 2., crosshair_pos.Z + right.Z + up.Z / 2. );
+				Batch.Vertex3d( crosshair_pos.X + right.X - up.X, crosshair_pos.Y + right.Y - up.Y, crosshair_pos.Z + right.Z - up.Z );
+				Batch.Vertex3d( crosshair_pos.X + right.X / 2. - up.X, crosshair_pos.Y + right.Y / 2. - up.Y, crosshair_pos.Z + right.Z / 2. - up.Z );
+				Batch.Vertex3d( crosshair_pos.X + right.X - up.X, crosshair_pos.Y + right.Y - up.Y, crosshair_pos.Z + right.Z - up.Z );
+				Batch.Vertex3d( crosshair_pos.X + right.X - up.X / 2., crosshair_pos.Y + right.Y - up.Y / 2., crosshair_pos.Z + right.Z - up.Z / 2. );
+				Batch.Vertex3d( crosshair_pos.X - right.X - up.X, crosshair_pos.Y - right.Y - up.Y, crosshair_pos.Z - right.Z - up.Z );
+				Batch.Vertex3d( crosshair_pos.X - right.X / 2. - up.X, crosshair_pos.Y - right.Y / 2. - up.Y, crosshair_pos.Z - right.Z / 2. - up.Z );
+				Batch.Vertex3d( crosshair_pos.X - right.X - up.X, crosshair_pos.Y - right.Y - up.Y, crosshair_pos.Z - right.Z - up.Z );
+				Batch.Vertex3d( crosshair_pos.X - right.X - up.X / 2., crosshair_pos.Y - right.Y - up.Y / 2., crosshair_pos.Z - right.Z - up.Z / 2. );
+
 				// FIXME: Just iterate on the list of weapon ports in ShipClass instead of calling AllShots!
 				std::vector<Shot*> all_weapons = (observed_object == observed_ship) ? observed_ship->AllShots() : std::vector<Shot*>();
 				for( std::vector<Shot*>::iterator shot_iter = all_weapons.begin(); shot_iter != all_weapons.end(); shot_iter ++ )
@@ -3350,43 +3344,45 @@ void RenderLayer::Draw( void )
 						relative_weapon_vec.ScaleBy( 0.9 );
 					else if( (*shot_iter)->ShotType == Shot::TYPE_ION_CANNON )
 						relative_weapon_vec.ScaleBy( 0.95 );
-					
+
 					weapon_pos.MoveAlong( &right, relative_weapon_vec.X );
 					weapon_pos.MoveAlong( &up, relative_weapon_vec.Y );
-					glVertex3d( weapon_pos.X, weapon_pos.Y, weapon_pos.Z );
-					
+					Batch.Vertex3d( weapon_pos.X, weapon_pos.Y, weapon_pos.Z );
+
 					weapon_pos.MoveAlong( &right, relative_weapon_vec.X * 2. );
 					weapon_pos.MoveAlong( &up, relative_weapon_vec.Y * 2. );
-					glVertex3d( weapon_pos.X, weapon_pos.Y, weapon_pos.Z );
+					Batch.Vertex3d( weapon_pos.X, weapon_pos.Y, weapon_pos.Z );
 				}
-			glEnd();
-			
+			Batch.End();
+
 			// Draw little dots for all selected weapon ports.
 			glPointSize( 2.f );
-			glBegin( GL_POINTS );
+			Batch.Begin( GL_POINTS );
+				Batch.Color4f( crosshair_red, crosshair_green, crosshair_blue, std::min<float>( 1.f, jump_progress - 1. ) );
 				for( std::vector<Shot*>::iterator shot_iter = all_weapons.begin(); shot_iter != all_weapons.end(); shot_iter ++ )
 				{
 					weapon_vec.Set( (*shot_iter)->X - observed_object->X, (*shot_iter)->Y - observed_object->Y, (*shot_iter)->Z - observed_object->Z );
 					relative_weapon_vec.Set( weapon_vec.Dot(&(observed_object->Right)), weapon_vec.Dot(&(observed_object->Up)) );
 					relative_weapon_vec.ScaleTo( (relative_weapon_vec.Length() > 0.001) ? 1. : 0. );
 					weapon_pos.Copy( &crosshair_pos );
-					
+
 					if( ((*shot_iter)->ShotType == Shot::TYPE_TORPEDO) || ((*shot_iter)->ShotType == Shot::TYPE_MISSILE) )
 						relative_weapon_vec.ScaleBy( 0.9 );
 					else if( (*shot_iter)->ShotType == Shot::TYPE_ION_CANNON )
 						relative_weapon_vec.ScaleBy( 0.95 );
-					
+
 					weapon_pos.MoveAlong( &right, relative_weapon_vec.X * 3.6 );
 					weapon_pos.MoveAlong( &up, relative_weapon_vec.Y * 3.6 );
-					glVertex3d( weapon_pos.X, weapon_pos.Y, weapon_pos.Z );
-					
+					Batch.Vertex3d( weapon_pos.X, weapon_pos.Y, weapon_pos.Z );
+
 					delete *shot_iter;
 				}
-			glEnd();
-			
+			Batch.End();
+
 			// Draw big dots for the next shots to fire.
 			glPointSize( 7.f );
-			glBegin( GL_POINTS );
+			Batch.Begin( GL_POINTS );
+				Batch.Color4f( crosshair_red, crosshair_green, crosshair_blue, std::min<float>( 1.f, jump_progress - 1. ) );
 				std::vector<Shot*> next_weapons = (observed_object == observed_ship) ? observed_ship->NextShots() : std::vector<Shot*>();
 				for( std::vector<Shot*>::iterator shot_iter = next_weapons.begin(); shot_iter != next_weapons.end(); shot_iter ++ )
 				{
@@ -3394,19 +3390,19 @@ void RenderLayer::Draw( void )
 					relative_weapon_vec.Set( weapon_vec.Dot(&(observed_object->Right)), weapon_vec.Dot(&(observed_object->Up)) );
 					relative_weapon_vec.ScaleTo( (relative_weapon_vec.Length() > 0.001) ? 1. : 0. );
 					weapon_pos.Copy( &crosshair_pos );
-					
+
 					if( ((*shot_iter)->ShotType == Shot::TYPE_TORPEDO) || ((*shot_iter)->ShotType == Shot::TYPE_MISSILE) )
 						relative_weapon_vec.ScaleBy( 0.9 );
 					else if( (*shot_iter)->ShotType == Shot::TYPE_ION_CANNON )
 						relative_weapon_vec.ScaleBy( 0.95 );
-					
+
 					weapon_pos.MoveAlong( &right, relative_weapon_vec.X * 3.6 );
 					weapon_pos.MoveAlong( &up, relative_weapon_vec.Y * 3.6 );
-					glVertex3d( weapon_pos.X, weapon_pos.Y, weapon_pos.Z );
-					
+					Batch.Vertex3d( weapon_pos.X, weapon_pos.Y, weapon_pos.Z );
+
 					delete *shot_iter;
 				}
-			glEnd();
+			Batch.End();
 			
 			if( (observed_object == observed_ship) && observed_ship->SelectedWeapon && (ammo >= 0) )
 			{
@@ -4065,9 +4061,9 @@ void RenderLayer::Draw( void )
 	MessageOutput->Visible = true;
 	MessageOutput->SetTypeToDraw( TextConsole::MSG_NORMAL, draw_scores || MessageInput->Visible || (! (vr || cinematic)) || game->Cfg.SettingAsBool("vr_messages") );
 	MessageOutput->ScrollTime = ((const XWingGame*)( game ))->OverlayScroll;
-	
-	
-	glPopMatrix();
+
+
+	game->Gfx.PopMatrix();
 }
 
 
@@ -4089,23 +4085,23 @@ void RenderLayer::DrawStars( void )
 	if( ! star_count )
 		return;
 	
-	glColor4f( 1.f, 1.f, 1.f, 1.f );
 	glPointSize( 0.5f );
 	glDisable( GL_DEPTH_TEST );
-	
-	glBegin( GL_POINTS );
-	
+
+	DynamicBatch &Batch = Raptor::Game->Gfx.Batch;
+	Batch.Begin( GL_POINTS );
+
 		for( int i = 0; i < star_count; i ++ )
-			glVertex3d( Raptor::Game->Cam.X + Stars[ i*3 ], Raptor::Game->Cam.Y + Stars[ i*3 + 1 ], Raptor::Game->Cam.Z + Stars[ i*3 + 2 ] );
-	
-	glEnd();
+			Batch.Vertex3d( Raptor::Game->Cam.X + Stars[ i*3 ], Raptor::Game->Cam.Y + Stars[ i*3 + 1 ], Raptor::Game->Cam.Z + Stars[ i*3 + 2 ] );
+
+	Batch.End();
 	
 	/*
 	// Disabled because the array doesn't stay centered on the camera.
-	glEnableClientState( GL_VERTEX_ARRAY );
-	glVertexPointer( 3, GL_DOUBLE, 0, Stars );
+	glEnableVertexAttribArray( 0 );
+	glVertexAttribPointer( 0, 3, GL_DOUBLE, GL_FALSE, 0, Stars );
 	glDrawArrays( GL_POINTS, 0, star_count );
-	glDisableClientState( GL_VERTEX_ARRAY );
+	glDisableVertexAttribArray( 0 );
 	*/
 	
 	glEnable( GL_DEPTH_TEST );
@@ -4206,7 +4202,7 @@ public:
 
 void RenderLayer::DrawScores( void )
 {
-	glPushMatrix();
+	Raptor::Game->Gfx.PushMatrix();
 	float ui_scale = Raptor::Game->UIScale;
 	Raptor::Game->Gfx.Setup2D();
 	
@@ -4387,7 +4383,7 @@ void RenderLayer::DrawScores( void )
 		}
 	}
 	
-	glPopMatrix();
+	Raptor::Game->Gfx.PopMatrix();
 }
 
 
@@ -4454,7 +4450,7 @@ void RenderLayer::DrawVoice( void )
 			
 			if( voice_y == Rect.h )
 			{
-				glPushMatrix();
+				game->Gfx.PushMatrix();
 				game->Gfx.Setup2D();
 			}
 			
@@ -4472,8 +4468,8 @@ void RenderLayer::DrawVoice( void )
 		}
 	}
 	
-	if( voice_y < Rect.h )  // If anyone is talking we called glPushMatrix.
-		glPopMatrix();
+	if( voice_y < Rect.h )  // If anyone is talking we called game->Gfx.PushMatrix.
+		game->Gfx.PopMatrix();
 }
 
 
@@ -4593,8 +4589,7 @@ void RenderLayer::UpdateSaitek( const Ship *ship, bool is_player )
 			if( fb && fb->Select() )
 			{
 				fb->Setup2D( 0, 240, 320, 0 );
-				glColor4f( 1.f, 1.f, 1.f, 1.f );
-				
+
 				Raptor::Game->Gfx.Clear();
 				Raptor::Game->Gfx.DrawRect2D( 0, 0, 320, 240, Raptor::Game->Res.GetTexture("*intercept") );
 				Raptor::Game->Saitek.SetFIPImage( fb, 0 );

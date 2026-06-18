@@ -284,7 +284,7 @@ void MainWindow::onAddSystem() {
     // Offset from last system so they don't overlap
     if (!mission.systems.empty()) {
         const auto& prev = mission.systems.back();
-        sys.spawnX = prev.spawnX;
+        sys.spawnX = prev.spawnX + 10000000.0;
         sys.spawnY = prev.spawnY;
         sys.spawnZ = 0;
         sys.background = "nebula";

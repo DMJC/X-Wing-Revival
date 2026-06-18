@@ -1285,7 +1285,7 @@ void LobbyMenu::Draw( void )
 	if( Raptor::Game->Head.VR && Raptor::Game->Gfx.DrawTo )
 	{
 		// In VR, show 3D background behind the menu.
-		glPushMatrix();
+		Raptor::Game->Gfx.PushMatrix();
 		Pos3D origin;
 		Raptor::Game->Cam.Copy( &origin );
 		Raptor::Game->Cam.FOV = Raptor::Game->Cfg.SettingAsDouble("vr_fov");
@@ -1294,7 +1294,7 @@ void LobbyMenu::Draw( void )
 		bg.BecomeInstance( Raptor::Game->Res.GetAnimation("stars.ani") );
 		double bg_dist = Raptor::Game->Cfg.SettingAsDouble( "g_bg_dist", std::min<double>( 50000., Raptor::Game->Gfx.ZFar * 0.875 ) );
 		Raptor::Game->Gfx.DrawSphere3D( 0,0,0, bg_dist, 32, bg.CurrentFrame(), Graphics::TEXTURE_MODE_Y_ASIN );
-		glPopMatrix();
+		Raptor::Game->Gfx.PopMatrix();
 
 		// Setup3D overwrote the projection matrix (per-eye in VR); restore the
 		// 2D projection before drawing the title text below.
@@ -1811,8 +1811,9 @@ void LobbyMenuShipView::Draw( void )
 		return;
 	}
 	
-	glPushMatrix();
-	glPushAttrib( GL_VIEWPORT_BIT );
+	Raptor::Game->Gfx.PushMatrix();
+	GLint savedViewport[4];
+	glGetIntegerv( GL_VIEWPORT, savedViewport );
 	// In VR, shift the viewport to match the per-eye convergence offset that Setup2D applies for 2D content.
 	int vr_shift_x = 0;
 	if( Raptor::Game->Gfx.DrawTo && Raptor::Game->Gfx.DrawTo->VRProjection )
@@ -1891,8 +1892,8 @@ void LobbyMenuShipView::Draw( void )
 	else
 		Rotation = 180.;
 	
-	glPopAttrib();
-	glPopMatrix();
+	glViewport( savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3] );
+	Raptor::Game->Gfx.PopMatrix();
 }
 
 

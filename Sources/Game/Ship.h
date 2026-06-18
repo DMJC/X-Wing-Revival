@@ -28,6 +28,7 @@ public:
 	bool CanRespawn;
 	uint8_t Group;
 	bool IsMissionObjective;
+	bool FollowJumps;
 	
 	double Health;
 	Clock HitClock;

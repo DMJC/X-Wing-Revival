@@ -707,6 +707,8 @@ void Shot::Update( double dt )
 
 void Shot::Draw( void )
 {
+	DynamicBatch &Batch = Raptor::Game->Gfx.Batch;
+
 	if( ! Drawn )
 		StartAtWeapon();
 	
@@ -764,91 +766,89 @@ void Shot::Draw( void )
 		else if( ShotType == Shot::TYPE_TORPEDO )
 			behind *= WidthScale;
 		
-		glEnable( GL_TEXTURE_2D );
-		glBindTexture( GL_TEXTURE_2D, Anim.CurrentFrame() );
-		glColor4f( 1.f, 1.f, 1.f, 1.f );
+		Raptor::Game->Gfx.BindTexture( Anim.CurrentFrame() );
 		
 		// Don't mipmap shots; they should look bright in the distance.
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
 		
 		if( going_away )
 		{
-			glBegin( GL_TRIANGLES );
+			Batch.Begin( GL_TRIANGLES );
 				
 				// Clockwise
-				glTexCoord2i( 0, 1 );
-				glVertex3d( X + cw.X, Y + cw.Y, Z + cw.Z );
+				Batch.TexCoord2i( 0, 1 );
+				Batch.Vertex3d( X + cw.X, Y + cw.Y, Z + cw.Z );
 				
 				// Front
-				glTexCoord2i( 1, 1 );
-				glVertex3d( X + Fwd.X * ahead, Y + Fwd.Y * ahead, Z + Fwd.Z * ahead );
+				Batch.TexCoord2i( 1, 1 );
+				Batch.Vertex3d( X + Fwd.X * ahead, Y + Fwd.Y * ahead, Z + Fwd.Z * ahead );
 				
 				// Counter-clockwise
-				glTexCoord2i( 1, 0 );
-				glVertex3d( X + ccw.X, Y + ccw.Y, Z + ccw.Z );
+				Batch.TexCoord2i( 1, 0 );
+				Batch.Vertex3d( X + ccw.X, Y + ccw.Y, Z + ccw.Z );
 				
-			glEnd();
+			Batch.End();
 		}
 		else
 		{
 			if( ShotType == TYPE_SUPERLASER )
 			{
-				glBegin( GL_QUADS );
+				Batch.Begin( GL_QUADS );
 					
 					// Rear CW
-					glTexCoord2d( 0., 0.4 );
-					glVertex3d( X + cw.X + Fwd.X * behind, Y + cw.Y + Fwd.Y * behind, Z + cw.Z + Fwd.Z * behind );
+					Batch.TexCoord2d( 0., 0.4 );
+					Batch.Vertex3d( X + cw.X + Fwd.X * behind, Y + cw.Y + Fwd.Y * behind, Z + cw.Z + Fwd.Z * behind );
 					
 					// Clockwise
-					glTexCoord2i( 0., 0.6 );
-					glVertex3d( X + cw.X, Y + cw.Y, Z + cw.Z );
+					Batch.TexCoord2i( 0., 0.6 );
+					Batch.Vertex3d( X + cw.X, Y + cw.Y, Z + cw.Z );
 					
 					// Counter-clockwise
-					glTexCoord2i( 1., 0.6 );
-					glVertex3d( X + ccw.X, Y + ccw.Y, Z + ccw.Z );
+					Batch.TexCoord2i( 1., 0.6 );
+					Batch.Vertex3d( X + ccw.X, Y + ccw.Y, Z + ccw.Z );
 					
 					// Rear CCW
-					glTexCoord2d( 1., 0.4 );
-					glVertex3d( X + ccw.X + Fwd.X * behind, Y + ccw.Y + Fwd.Y * behind, Z + ccw.Z + Fwd.Z * behind );
+					Batch.TexCoord2d( 1., 0.4 );
+					Batch.Vertex3d( X + ccw.X + Fwd.X * behind, Y + ccw.Y + Fwd.Y * behind, Z + ccw.Z + Fwd.Z * behind );
 					
-				glEnd();
-				glBegin( GL_TRIANGLES );
+				Batch.End();
+				Batch.Begin( GL_TRIANGLES );
 					
 					// Rear CCW
-					glTexCoord2d( 1., 0.4 );
-					glVertex3d( X + ccw.X + Fwd.X * behind, Y + ccw.Y + Fwd.Y * behind, Z + ccw.Z + Fwd.Z * behind );
+					Batch.TexCoord2d( 1., 0.4 );
+					Batch.Vertex3d( X + ccw.X + Fwd.X * behind, Y + ccw.Y + Fwd.Y * behind, Z + ccw.Z + Fwd.Z * behind );
 					
 					// Rear
-					glTexCoord2i( 0.5, 0. );
-					glVertex3d( X + Fwd.X * (behind - ahead), Y + Fwd.Y * (behind - ahead), Z + Fwd.Z * (behind - ahead) );
+					Batch.TexCoord2i( 0.5, 0. );
+					Batch.Vertex3d( X + Fwd.X * (behind - ahead), Y + Fwd.Y * (behind - ahead), Z + Fwd.Z * (behind - ahead) );
 					
 					// Rear CW
-					glTexCoord2d( 0., 0.4 );
-					glVertex3d( X + cw.X + Fwd.X * behind, Y + cw.Y + Fwd.Y * behind, Z + cw.Z + Fwd.Z * behind );
+					Batch.TexCoord2d( 0., 0.4 );
+					Batch.Vertex3d( X + cw.X + Fwd.X * behind, Y + cw.Y + Fwd.Y * behind, Z + cw.Z + Fwd.Z * behind );
 					
-				glEnd();
+				Batch.End();
 			}
 			else
 			{
-				glBegin( GL_TRIANGLES );
+				Batch.Begin( GL_TRIANGLES );
 					
 					// Counter-clockwise
-					glTexCoord2i( 1, 0 );
-					glVertex3d( X + ccw.X, Y + ccw.Y, Z + ccw.Z );
+					Batch.TexCoord2i( 1, 0 );
+					Batch.Vertex3d( X + ccw.X, Y + ccw.Y, Z + ccw.Z );
 					
 					// Rear
-					glTexCoord2i( 0, 0 );
-					glVertex3d( X + PrevPos.Fwd.X * behind, Y + PrevPos.Fwd.Y * behind, Z + PrevPos.Fwd.Z * behind );
+					Batch.TexCoord2i( 0, 0 );
+					Batch.Vertex3d( X + PrevPos.Fwd.X * behind, Y + PrevPos.Fwd.Y * behind, Z + PrevPos.Fwd.Z * behind );
 					
 					// Clockwise
-					glTexCoord2i( 0, 1 );
-					glVertex3d( X + cw.X, Y + cw.Y, Z + cw.Z );
+					Batch.TexCoord2i( 0, 1 );
+					Batch.Vertex3d( X + cw.X, Y + cw.Y, Z + cw.Z );
 					
-				glEnd();
+				Batch.End();
 			}
 		}
 		
-		glBegin( GL_QUADS );
+		Batch.Begin( GL_QUADS );
 			
 			// Muzzle flash on first frame.
 			double scale = WidthScale;  // Flicker
@@ -856,124 +856,124 @@ void Shot::Draw( void )
 				scale *= ((ShotType == Shot::TYPE_TURBO_LASER_GREEN) || (ShotType == Shot::TYPE_TURBO_LASER_GREEN)) ? 4. : 2.5;
 			
 			// Outside
-			glTexCoord2i( 0, 0 );
-			glVertex3d( X + out.X * scale, Y + out.Y * scale, Z + out.Z * scale );
+			Batch.TexCoord2i( 0, 0 );
+			Batch.Vertex3d( X + out.X * scale, Y + out.Y * scale, Z + out.Z * scale );
 			
 			// Clockwise
-			glTexCoord2i( 0, 1 );
-			glVertex3d( X + cw.X * scale, Y + cw.Y * scale, Z + cw.Z * scale );
+			Batch.TexCoord2i( 0, 1 );
+			Batch.Vertex3d( X + cw.X * scale, Y + cw.Y * scale, Z + cw.Z * scale );
 			
 			// Inside
-			glTexCoord2i( 1, 1 );
-			glVertex3d( X + in.X * scale, Y + in.Y * scale, Z + in.Z * scale );
+			Batch.TexCoord2i( 1, 1 );
+			Batch.Vertex3d( X + in.X * scale, Y + in.Y * scale, Z + in.Z * scale );
 			
 			// Counter-clockwise
-			glTexCoord2i( 1, 0 );
-			glVertex3d( X + ccw.X * scale, Y + ccw.Y * scale, Z + ccw.Z * scale );
+			Batch.TexCoord2i( 1, 0 );
+			Batch.Vertex3d( X + ccw.X * scale, Y + ccw.Y * scale, Z + ccw.Z * scale );
 			
-		glEnd();
+		Batch.End();
 		
 		if( ! going_away )
 		{
-			glBegin( GL_TRIANGLES );
+			Batch.Begin( GL_TRIANGLES );
 				
 				// Clockwise
-				glTexCoord2i( 0, 1 );
-				glVertex3d( X + cw.X, Y + cw.Y, Z + cw.Z );
+				Batch.TexCoord2i( 0, 1 );
+				Batch.Vertex3d( X + cw.X, Y + cw.Y, Z + cw.Z );
 				
 				// Front
-				glTexCoord2i( 1, 1 );
-				glVertex3d( X + Fwd.X * ahead, Y + Fwd.Y * ahead, Z + Fwd.Z * ahead );
+				Batch.TexCoord2i( 1, 1 );
+				Batch.Vertex3d( X + Fwd.X * ahead, Y + Fwd.Y * ahead, Z + Fwd.Z * ahead );
 				
 				// Counter-clockwise
-				glTexCoord2i( 1, 0 );
-				glVertex3d( X + ccw.X, Y + ccw.Y, Z + ccw.Z );
+				Batch.TexCoord2i( 1, 0 );
+				Batch.Vertex3d( X + ccw.X, Y + ccw.Y, Z + ccw.Z );
 			
-			glEnd();
+			Batch.End();
 		}
 		else
 		{
 			if( ShotType == TYPE_SUPERLASER )
 			{
-				glBegin( GL_QUADS );
+				Batch.Begin( GL_QUADS );
 					
 					// Rear CW
-					glTexCoord2d( 0., 0.4 );
-					glVertex3d( X + cw.X + Fwd.X * behind, Y + cw.Y + Fwd.Y * behind, Z + cw.Z + Fwd.Z * behind );
+					Batch.TexCoord2d( 0., 0.4 );
+					Batch.Vertex3d( X + cw.X + Fwd.X * behind, Y + cw.Y + Fwd.Y * behind, Z + cw.Z + Fwd.Z * behind );
 					
 					// Clockwise
-					glTexCoord2i( 0., 0.6 );
-					glVertex3d( X + cw.X, Y + cw.Y, Z + cw.Z );
+					Batch.TexCoord2i( 0., 0.6 );
+					Batch.Vertex3d( X + cw.X, Y + cw.Y, Z + cw.Z );
 					
 					// Counter-clockwise
-					glTexCoord2i( 1., 0.6 );
-					glVertex3d( X + ccw.X, Y + ccw.Y, Z + ccw.Z );
+					Batch.TexCoord2i( 1., 0.6 );
+					Batch.Vertex3d( X + ccw.X, Y + ccw.Y, Z + ccw.Z );
 					
 					// Rear CCW
-					glTexCoord2d( 1., 0.4 );
-					glVertex3d( X + ccw.X + Fwd.X * behind, Y + ccw.Y + Fwd.Y * behind, Z + ccw.Z + Fwd.Z * behind );
+					Batch.TexCoord2d( 1., 0.4 );
+					Batch.Vertex3d( X + ccw.X + Fwd.X * behind, Y + ccw.Y + Fwd.Y * behind, Z + ccw.Z + Fwd.Z * behind );
 					
 				if( Raptor::Game->Cam.Fwd.Dot(&Fwd) > 0.9 )
 				{
 						// Rear Outside
-						glTexCoord2i( 0, 0 );
-						glVertex3d( X + out.X + Fwd.X * behind, Y + out.Y + Fwd.Y * behind, Z + out.Z + Fwd.Z * behind );
+						Batch.TexCoord2i( 0, 0 );
+						Batch.Vertex3d( X + out.X + Fwd.X * behind, Y + out.Y + Fwd.Y * behind, Z + out.Z + Fwd.Z * behind );
 						
 						// Rear Clockwise
-						glTexCoord2i( 0, 1 );
-						glVertex3d( X + cw.X + Fwd.X * behind, Y + cw.Y + Fwd.Y * behind, Z + cw.Z + Fwd.Z * behind );
+						Batch.TexCoord2i( 0, 1 );
+						Batch.Vertex3d( X + cw.X + Fwd.X * behind, Y + cw.Y + Fwd.Y * behind, Z + cw.Z + Fwd.Z * behind );
 						
 						// Rear Inside
-						glTexCoord2i( 1, 1 );
-						glVertex3d( X + in.X + Fwd.X * behind, Y + in.Y + Fwd.Y * behind, Z + in.Z + Fwd.Z * behind );
+						Batch.TexCoord2i( 1, 1 );
+						Batch.Vertex3d( X + in.X + Fwd.X * behind, Y + in.Y + Fwd.Y * behind, Z + in.Z + Fwd.Z * behind );
 						
 						// Rear Counter-clockwise
-						glTexCoord2i( 1, 0 );
-						glVertex3d( X + ccw.X + Fwd.X * behind, Y + ccw.Y + Fwd.Y * behind, Z + ccw.Z + Fwd.Z * behind );
+						Batch.TexCoord2i( 1, 0 );
+						Batch.Vertex3d( X + ccw.X + Fwd.X * behind, Y + ccw.Y + Fwd.Y * behind, Z + ccw.Z + Fwd.Z * behind );
 						
-					glEnd(); // GL_QUADS
+					Batch.End(); // GL_QUADS
 				}
 				else
 				{
-					glEnd(); // GL_QUADS
-					glBegin( GL_TRIANGLES );
+					Batch.End(); // GL_QUADS
+					Batch.Begin( GL_TRIANGLES );
 						
 						// Rear CCW
-						glTexCoord2d( 1., 0.4 );
-						glVertex3d( X + ccw.X + Fwd.X * behind, Y + ccw.Y + Fwd.Y * behind, Z + ccw.Z + Fwd.Z * behind );
+						Batch.TexCoord2d( 1., 0.4 );
+						Batch.Vertex3d( X + ccw.X + Fwd.X * behind, Y + ccw.Y + Fwd.Y * behind, Z + ccw.Z + Fwd.Z * behind );
 						
 						// Rear
-						glTexCoord2i( 0.5, 0. );
-						glVertex3d( X + Fwd.X * (behind - ahead), Y + Fwd.Y * (behind - ahead), Z + Fwd.Z * (behind - ahead) );
+						Batch.TexCoord2i( 0.5, 0. );
+						Batch.Vertex3d( X + Fwd.X * (behind - ahead), Y + Fwd.Y * (behind - ahead), Z + Fwd.Z * (behind - ahead) );
 						
 						// Rear CW
-						glTexCoord2d( 0., 0.4 );
-						glVertex3d( X + cw.X + Fwd.X * behind, Y + cw.Y + Fwd.Y * behind, Z + cw.Z + Fwd.Z * behind );
+						Batch.TexCoord2d( 0., 0.4 );
+						Batch.Vertex3d( X + cw.X + Fwd.X * behind, Y + cw.Y + Fwd.Y * behind, Z + cw.Z + Fwd.Z * behind );
 						
-					glEnd();
+					Batch.End();
 				}
 			}
 			else
 			{
-				glBegin( GL_TRIANGLES );
+				Batch.Begin( GL_TRIANGLES );
 					
 					// Counter-clockwise
-					glTexCoord2i( 1, 0 );
-					glVertex3d( X + ccw.X, Y + ccw.Y, Z + ccw.Z );
+					Batch.TexCoord2i( 1, 0 );
+					Batch.Vertex3d( X + ccw.X, Y + ccw.Y, Z + ccw.Z );
 					
 					// Rear
-					glTexCoord2i( 0, 0 );
-					glVertex3d( X + PrevPos.Fwd.X * behind, Y + PrevPos.Fwd.Y * behind, Z + PrevPos.Fwd.Z * behind );
+					Batch.TexCoord2i( 0, 0 );
+					Batch.Vertex3d( X + PrevPos.Fwd.X * behind, Y + PrevPos.Fwd.Y * behind, Z + PrevPos.Fwd.Z * behind );
 					
 					// Clockwise
-					glTexCoord2i( 0, 1 );
-					glVertex3d( X + cw.X, Y + cw.Y, Z + cw.Z );
+					Batch.TexCoord2i( 0, 1 );
+					Batch.Vertex3d( X + cw.X, Y + cw.Y, Z + cw.Z );
 					
-				glEnd();
+				Batch.End();
 			}
 		}
 		
-		glDisable( GL_TEXTURE_2D );
+		Raptor::Game->Gfx.BindTexture(0);
 	}
 	
 	if( (! Drawn) && ((Raptor::Game->Gfx.DrawTo == Raptor::Game->Head.EyeR) || ! Raptor::Game->Gfx.DrawTo) )  // Only set Drawn on right eye or main framebuffer.

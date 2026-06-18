@@ -1,26 +1,80 @@
 multisystem
-systems 2
+systems 3
 mission_name Multisystem Test
-mission_desc Test two connected star systems.
-gametype team_elim
+mission_desc Hunt an Imperial fleet across three star systems.
+gametype objectives
 player_team rebel
 player_ship X/W
+player_spawn 0 0 0
 
 system 1
 bg stars
 player_spawn 0 0 0
-navpoint "Jump to Hoth" 500 0 0 true 2
+navpoint "Jump to Hoth" 800 0 0 true 2
 
-at 0:05 while player alive
-alert r0_base.wav You are in the Anoat system. Fly to the nav point and press J to jump to Hoth.
+at 0:00
+spawn rebel follow X/W "Red 2" at -50 80 0
+spawn rebel follow X/W "Red 3" at -50 -80 0
+spawn empire T/F "Alpha 1" at 600 200 0 facing -1 0 0
+spawn empire T/F "Alpha 2" at 650 -150 0 facing -1 0 0
+spawn empire T/F "Alpha 3" at 700 100 50 facing -1 0 0
+
+at 0:03 while player alive
+message Welcome to the Anoat system. An Imperial patrol has been spotted nearby.
+wait 4
+message Engage the TIE Fighters, then jump to Hoth via the nav point. Press N to target, J to jump.
 system 1
 
 system 2
 bg nebula
-player_spawn 10000 0 0
-navpoint "Return to Anoat" 9500 0 0 true 1
-navpoint "Jump to Endor" 10500 0 0 false 1 var endor_visible
+player_spawn 10000000 0 0
+navpoint "Return to Anoat" 9999400 0 0 true 1
+navpoint "Jump to Endor" 10000600 0 0 false 3 var endor_visible
 
-on destroyed rebel_ship while player alive
-endor_visible true
+on arrive while player alive
+message Arriving in the Hoth system. Imperial ships detected.
+
+at 0:00
+spawn empire T/I "Beta 1" at 10000300 300 0 facing -1 0 0
+spawn empire T/I "Beta 2" at 10000350 -200 0 facing -1 0 0
+spawn empire T/I "Beta 3" at 10000250 100 100 facing -1 0 0
+spawn empire T/I "Beta 4" at 10000400 -100 -50 facing -1 0 0
 system 2
+
+system 3
+bg nebula2
+player_spawn 20000000 0 0
+navpoint "Return to Hoth" 19999400 0 0 true 2
+
+on arrive while player alive
+message The Endor system. The Obliterator is here. Take it down!
+
+at 0:00
+spawn empire T/I "Gamma 1" at 20000400 300 0 facing -1 0 0
+spawn empire T/I "Gamma 2" at 20000450 -200 0 facing -1 0 0
+spawn empire T/I "Gamma 3" at 20000350 100 100 facing -1 0 0
+spawn empire T/I "Gamma 4" at 20000500 -100 -50 facing -1 0 0
+spawn empire T/F "Delta 1" at 20000300 400 100 facing -1 0 0
+spawn empire T/F "Delta 2" at 20000350 -400 -100 facing -1 0 0
+system 3
+
+at 0:00
+spawn empire objective COR "Carnivore" at 10000500 600 0 facing -1 0 0
+spawn empire objective ISD "Obliterator" at 20000600 800 0 facing -1 0 0
+
+on destroyed empire_ship if ( name "Carnivore" )
+endor_visible true
+wait 2
+message The Carnivore is down! Intel shows the Obliterator is at Endor. Jump point is now available.
+
+when ( no empire objectives alive ) and ( players alive )
+wait 3
+victory
+
+on victory
+wait 2
+message All Imperial objectives destroyed. Well done, pilot.
+
+on defeat
+wait 1
+message Mission failed. The Empire tightens its grip on the sector.

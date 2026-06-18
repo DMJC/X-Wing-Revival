@@ -733,7 +733,7 @@ bool XWingServer::ProcessPacket( Packet *packet, ConnectedClient *from_client )
 			{
 				// Check visibility (variable or fixed).
 				bool nav_visible = nav->VariableName.empty() ? nav->Visible : Data.PropertyAsBool(nav->VariableName);
-				if( nav_visible && (player_ship->Dist(nav) <= 100.) )
+				if( nav_visible && (player_ship->Dist(nav) <= 1000.) )
 				{
 					// Look up destination spawn from system properties.
 					std::string spawn_key = std::string("system_") + Num::ToString((int)nav->TargetSystem) + std::string("_spawn");
@@ -876,21 +876,55 @@ void XWingServer::Update( double dt )
 				if( round_time >= pnj_iter->second.FireTime )
 				{
 					// Find the player's ship and teleport it to the destination.
+					Ship *player_ship = NULL;
 					for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
 					{
 						if( (obj_iter->second->Type() == XWing::Object::SHIP) && (obj_iter->second->PlayerID == pnj_iter->first) )
 						{
-							Ship *ship = (Ship*) obj_iter->second;
-							ship->X            = pnj_iter->second.DestX;
-							ship->Y            = pnj_iter->second.DestY;
-							ship->Z            = pnj_iter->second.DestZ;
-							ship->JumpedOut    = false;
-							ship->JumpProgress = 0.;
-							ship->Lifetime.Reset( 0.5 );
-							ship->SystemNumber = pnj_iter->second.DestSystem;
-							ship->MotionVector = ship->Fwd * ship->MaxSpeed();
-							ship->SendUpdate( 127 );
+							player_ship = (Ship*) obj_iter->second;
 							break;
+						}
+					}
+					if( player_ship )
+					{
+						uint8_t from_system = player_ship->SystemNumber;
+						uint8_t dest_system = pnj_iter->second.DestSystem;
+						player_ship->X            = pnj_iter->second.DestX;
+						player_ship->Y            = pnj_iter->second.DestY;
+						player_ship->Z            = pnj_iter->second.DestZ;
+						player_ship->JumpedOut    = false;
+						player_ship->JumpProgress = 0.;
+						player_ship->Lifetime.Reset( 0.5 );
+						player_ship->SystemNumber = dest_system;
+						player_ship->MotionVector = player_ship->Fwd * player_ship->MaxSpeed();
+						player_ship->SendUpdate( 127 );
+						TriggerEvent( MissionEvent::TRIGGER_ON_ARRIVE, player_ship );
+
+						// Teleport AI ships with FollowJumps to the new system.
+						std::string nef_key = std::string("system_") + Num::ToString((int)dest_system) + std::string("_no_enemy_follow");
+						bool dest_no_enemy_follow = Data.PropertyAsBool( nef_key );
+						for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
+						{
+							if( obj_iter->second->Type() != XWing::Object::SHIP )
+								continue;
+							Ship *ai_ship = (Ship*) obj_iter->second;
+							if( ai_ship->PlayerID || ! ai_ship->FollowJumps )
+								continue;
+							if( ai_ship->SystemNumber != from_system )
+								continue;
+							if( ai_ship->Health <= 0. || ai_ship->JumpedOut )
+								continue;
+							if( dest_no_enemy_follow && ai_ship->Team && ai_ship->Team != player_ship->Team )
+								continue;
+							ai_ship->X            = pnj_iter->second.DestX + Rand::Double( -200., 200. );
+							ai_ship->Y            = pnj_iter->second.DestY + Rand::Double( -200., 200. );
+							ai_ship->Z            = pnj_iter->second.DestZ + Rand::Double( -200., 200. );
+							ai_ship->JumpedOut    = false;
+							ai_ship->JumpProgress = 0.;
+							ai_ship->Lifetime.Reset( Rand::Double( 0.3, 0.8 ) );
+							ai_ship->SystemNumber = dest_system;
+							ai_ship->MotionVector = ai_ship->Fwd * ai_ship->MaxSpeed();
+							ai_ship->SendUpdate( 127 );
 						}
 					}
 					pnj_iter = PendingNavJumps.erase( pnj_iter );
@@ -2508,7 +2542,10 @@ void XWingServer::Update( double dt )
 								
 								if( ship->Team && (potential_target->Team == ship->Team) )
 									continue;
-								
+
+								if( ship->Dist(potential_target) > 50000. )
+									continue;
+
 								if( potential_target->ParentID )
 								{
 									// AI ships typically don't attack turrets attached to other ships.
@@ -2555,7 +2592,10 @@ void XWingServer::Update( double dt )
 							
 							if( ship->Team && (potential_target->Team == ship->Team) )
 								continue;
-							
+
+							if( ship->Dist(potential_target) > 50000. )
+								continue;
+
 							// Don't attack a ship that's still jumping in or has jumped out.
 							if( (potential_target->JumpProgress < 1.) || potential_target->JumpedOut )
 								continue;
@@ -6165,6 +6205,7 @@ void XWingServer::BeginFlying( uint16_t player_id, bool respawn )
 				Data.SetProperty( "multisystem", "true" );
 				std::set<uint32_t> nav_object_ids;
 				std::map<std::string,std::string> sys_info;
+				sys_info[ "multisystem" ] = "true";
 				for( std::vector<MissionSystem>::const_iterator sys_iter = mission_iter->second.Systems.begin(); sys_iter != mission_iter->second.Systems.end(); sys_iter ++ )
 				{
 					std::string bg_key    = std::string("system_") + Num::ToString((int)sys_iter->Number) + std::string("_bg");
@@ -6175,6 +6216,11 @@ void XWingServer::BeginFlying( uint16_t player_id, bool respawn )
 					Data.SetProperty( spawn_key, spawn_val );
 					sys_info[ bg_key    ] = bg_val;
 					sys_info[ spawn_key ] = spawn_val;
+					if( sys_iter->NoEnemyFollow )
+					{
+						std::string nef_key = std::string("system_") + Num::ToString((int)sys_iter->Number) + std::string("_no_enemy_follow");
+						Data.SetProperty( nef_key, "true" );
+					}
 
 					for( std::vector<MissionNavPoint>::const_iterator np_iter = sys_iter->NavPoints.begin(); np_iter != sys_iter->NavPoints.end(); np_iter ++ )
 					{
@@ -8096,6 +8142,8 @@ void XWingServer::BeginFlying( uint16_t player_id, bool respawn )
 			else
 				ship->SetFwdVec( (rebel && (GameType != XWing::GameType::BATTLE_OF_YAVIN) ? -1. : 1.), 0., 0. );
 			ship->SetUpVec( 0., 0., 1. );
+			if( Data.PropertyAsBool("multisystem") )
+				ship->SystemNumber = 1;
 			ship->ResetTurrets();
 			if( ship->NextCheckpoint )
 			{

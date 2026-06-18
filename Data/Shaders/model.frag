@@ -6,7 +6,7 @@ precision highp float;
 // Shader variables.
 
 #ifndef VERSION
-#define VERSION 110
+#define VERSION 330
 #endif
 
 #ifndef LIGHT_QUALITY
@@ -61,6 +61,12 @@ precision highp float;
 #endif
 
 
+// Fragment output:
+out vec4 FragColor;
+
+// Texture coordinate input:
+in vec4 vTexCoord;
+
 // Material properties:
 uniform sampler2D Texture;
 uniform float Alpha;
@@ -69,13 +75,13 @@ uniform vec3 AmbientColor;
 #if LIGHT_QUALITY >= 3
 uniform sampler2D BumpMap;
 uniform float BumpScale;
-varying vec3 WorldTangent;
-varying vec3 WorldBitangent;
+in vec3 WorldTangent;
+in vec3 WorldBitangent;
 #endif
 
 #if (LIGHT_QUALITY >= 1) && (LIGHT_QUALITY < 4)
 // Interpolates automatically from vertex shader.
-varying vec3 Color;
+in vec3 Color;
 #endif
 
 
@@ -135,15 +141,15 @@ uniform float PointLight3Radius;
 #endif
 
 uniform vec3 CamPos;
-varying vec3 WorldPos;
-varying vec3 WorldNormal;
+in vec3 WorldPos;
+in vec3 WorldNormal;
 
 #if DIRECTIONAL_LIGHTS || POINT_LIGHTS
 float directional_light( vec3 normal, vec3 light_dir, float wrap_around )
 {
 	// Wrap-around 0 is true Lambert lighting, where illumination ends at 90 degrees.
 	// Wrap-around 1 means 90-degree surfaces receive 50% illumination.
-	
+
 	return max( (dot( normal, light_dir ) + wrap_around) / (1.0 + wrap_around), 0.0 );
 }
 #endif
@@ -163,21 +169,17 @@ float point_light_specular( vec3 normal, vec3 light_vec, vec3 vec_to_cam, float 
 #endif
 
 #elif BLASTPOINTS > 0 // && (LIGHT_QUALITY < 2)
-varying vec3 WorldPos;
+in vec3 WorldPos;
 #endif
 
 
 #if BLASTPOINTS > 0
 
 #if BLASTPOINT_QUALITY >= 1
-#if VERSION >= 130
 flat in vec3 WorldBlastPoint[ BLASTPOINTS ];
-#else
-varying vec3 WorldBlastPoint[ BLASTPOINTS ];
-#endif
 uniform float BlastRadius[ BLASTPOINTS ];
 #else
-varying float BlastDarken;
+in float BlastDarken;
 #endif
 
 #endif
@@ -192,12 +194,12 @@ uniform float GlowScale;
 void main( void )
 {
 	// Apply interpolated texture coordinates.
-	gl_FragColor = texture2D( Texture, gl_TexCoord[0].st );
-	
+	FragColor = texture( Texture, vTexCoord.st );
+
 	#if BLASTPOINTS > 0
 		#if BLASTPOINT_QUALITY >= 1
 			float darken = 1.0;
-			
+
 			float blast_radius = 0.0;
 			for( int i = 0; i < BLASTPOINTS; i ++ )
 			{
@@ -210,49 +212,49 @@ void main( void )
 				#endif
 				blast_radius = max( blast_radius, BlastRadius[ i ] );
 			}
-			
+
 			// Avoid darkening screens and glowing engines.
 			darken = min( 1.0, max( darken, length(AmbientColor) * 10.0 ) );
 		#else
 			float darken = BlastDarken;
 		#endif
-		
+
 		#if BLASTPOINT_QUALITY >= 2
 			// Adjust darkness curve by blast radius.
 			darken = pow( darken, max( 1., min( 0.2, blast_radius * 0.0625 ) ) );
-			
+
 			#if LIGHT_QUALITY >= 2
 				float shininess = Shininess * 0.5 + 0.5 * darken;
 				#undef SHININESS
 				#define SHININESS shininess
 			#endif
 		#endif
-		
-		gl_FragColor.rgb *= 0.25 + 0.75 * darken;
+
+		FragColor.rgb *= 0.25 + 0.75 * darken;
 	#endif
-	
+
 	#if LIGHT_QUALITY >= 2
 		vec3 world_normal = normalize( WorldNormal );
 		vec3 vec_to_cam = normalize( WorldPos - CamPos );
 		vec3 diffuse = vec3( 0.0, 0.0, 0.0 );
 		vec3 specular = vec3( 0.0, 0.0, 0.0 );
-		
+
 		#if LIGHT_QUALITY >= 3
-			vec4 bump = texture2D( BumpMap, gl_TexCoord[0].st );
+			vec4 bump = texture( BumpMap, vTexCoord.st );
 			#ifdef DEBUG
-				gl_FragColor.rgb *= 0.125;
-				gl_FragColor.rgb += bump.rgb;
+				FragColor.rgb *= 0.125;
+				FragColor.rgb += bump.rgb;
 			#endif
 			vec3 bump_t = WorldTangent   * (bump.r * 2.0 - 1.0);
 			vec3 bump_b = WorldBitangent * (bump.g * 2.0 - 1.0);
 			vec3 bump_n = world_normal   * (bump.b * 2.0 - 1.0);
 			world_normal = normalize( mix( world_normal, bump_t + bump_b + bump_n, bump.a * BUMP_SCALE ) );
 		#endif
-		
+
 		#if LIGHT_QUALITY >= 4
 			vec3 Color = AMBIENT_COLOR;
 			diffuse = AMBIENT_LIGHT;
-			
+
 			// Do the directional diffuse per-pixel for bump-mapping.
 			#if DIRECTIONAL_LIGHTS > 0
 				diffuse += directional_light( world_normal, DirectionalLight0Dir, DirectionalLight0WrapAround ) * DirectionalLight0Color;
@@ -267,7 +269,7 @@ void main( void )
 				diffuse += directional_light( world_normal, DirectionalLight3Dir, DirectionalLight3WrapAround ) * DirectionalLight3Color;
 			#endif
 		#endif
-		
+
 		#if DIRECTIONAL_LIGHTS > 0
 			specular += pow( directional_light( vec_to_cam, reflect(DirectionalLight0Dir,world_normal), DirectionalLight0WrapAround ), SHININESS ) * DirectionalLight0Color;
 		#endif
@@ -300,38 +302,38 @@ void main( void )
 			diffuse += point_light( world_normal, light_vec, 0.0, PointLight3Radius ) * PointLight3Color;
 			specular += point_light_specular( world_normal, light_vec, vec_to_cam, 0.0, PointLight3Radius, SHININESS ) * PointLight3Color;
 		#endif
-		
+
 		#if BLASTPOINTS > 0
 			specular *= darken;
 		#endif
-		
+
 		// Apply per-pixel calculated color.
-		gl_FragColor.rgb *= Color + (DIFFUSE_COLOR*diffuse);
-		
+		FragColor.rgb *= Color + (DIFFUSE_COLOR*diffuse);
+
 		// This acts like a white specular texture to allow highlights on dark surfaces.
-		gl_FragColor.rgb += SPECULAR_COLOR*specular;
-		gl_FragColor.a = max( max( gl_FragColor.a, specular.r ), max( specular.g, specular.b ) );
-		
+		FragColor.rgb += SPECULAR_COLOR*specular;
+		FragColor.a = max( max( FragColor.a, specular.r ), max( specular.g, specular.b ) );
+
 	#elif LIGHT_QUALITY
 		// Apply per-vertex interpolated color.
-		gl_FragColor.rgb *= Color;
+		FragColor.rgb *= Color;
 	#endif
-	
+
 	#if GLOWMAP
-		vec4 glow = texture2D( GlowMap, gl_TexCoord[0].st );
+		vec4 glow = texture( GlowMap, vTexCoord.st );
 		glow.a *= GLOW_SCALE;
-		gl_FragColor.rgb = gl_FragColor.rgb * (1.0 - glow.a) + glow.rgb * glow.a;
+		FragColor.rgb = FragColor.rgb * (1.0 - glow.a) + glow.rgb * glow.a;
 	#endif
-	
+
 	// Apply material alpha.
 	#if (BLASTPOINTS > 0) && (BLASTPOINT_QUALITY >= 2)
-		gl_FragColor.a *= pow( Alpha, darken );
+		FragColor.a *= pow( Alpha, darken );
 	#else
-		gl_FragColor.a *= Alpha;
+		FragColor.a *= Alpha;
 	#endif
-	
+
 	#ifdef FOG_DIST
 		// Apply Death Star distance fog (if applicable).
-		gl_FragColor.rgb *= clamp( FOG_DIST - gl_FragCoord.z * FOG_DIST, 0.0, 1.0 );
+		FragColor.rgb *= clamp( FOG_DIST - gl_FragCoord.z * FOG_DIST, 0.0, 1.0 );
 	#endif
 }

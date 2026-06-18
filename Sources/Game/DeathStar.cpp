@@ -254,6 +254,8 @@ void DeathStar::Update( double dt )
 
 void DeathStar::Draw( void )
 {
+	DynamicBatch &Batch = Raptor::Game->Gfx.Batch;
+
 	bool use_shaders = Raptor::Game->ShaderMgr.Active();
 	Shader *prev_shader = Raptor::Game->ShaderMgr.Selected;
 	bool change_shaders = use_shaders && (Raptor::Game->Gfx.LightQuality >= 1);
@@ -405,8 +407,6 @@ void DeathStar::Draw( void )
 	slice[ 3 ].Copy( &(slice[ 1 ]) );
 	slice[ 3 ].MoveAlong( &Up, TrenchDepth * -1. );
 	
-	glEnable( GL_TEXTURE_2D );
-	
 	if( use_shaders )
 	{
 		Raptor::Game->ShaderMgr.Set3f( "AmbientColor", Ambient.Red, Ambient.Green, Ambient.Blue );
@@ -434,8 +434,7 @@ void DeathStar::Draw( void )
 	}
 	
 	glActiveTexture( GL_TEXTURE0 + 0 ); // Texture
-	glBindTexture( GL_TEXTURE_2D, Texture.CurrentFrame() );
-	glColor4f( 1.f, 1.f, 1.f, 1.f );
+	Raptor::Game->Gfx.BindTexture( Texture.CurrentFrame() );
 	
 	// Make sure the Death Star surface texture is allowed to repeat.
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
@@ -448,112 +447,112 @@ void DeathStar::Draw( void )
 	if( tx_depth < 1 )
 		tx_depth = 1;
 	
-	glBegin( GL_QUADS );
+	Batch.Begin( GL_QUADS );
 		
 		if( cam_up >= 0. )
 		{
 			// Surface Left
-			glNormal3d( Up.X, Up.Y, Up.Z );
+			Batch.Normal3d( Up.X, Up.Y, Up.Z );
 			if( use_bumpmap )
 			{
-				glVertexAttrib3f( tangent_loc,   Right.X,  Right.Y,  Right.Z  );
-				glVertexAttrib3f( bitangent_loc, -(Fwd.X), -(Fwd.Y), -(Fwd.Z) );
+				Batch.Attrib3f( 0,   Right.X,  Right.Y,  Right.Z  );
+				Batch.Attrib3f( 1, -(Fwd.X), -(Fwd.Y), -(Fwd.Z) );
 			}
-			glTexCoord2d( 0., texture_fwd_offset );
-			glVertex3d( slice[ 0 ].X + Fwd.X * trench_fwd - Right.X * trench_fwd, slice[ 0 ].Y + Fwd.Y * trench_fwd - Right.Y * trench_fwd, slice[ 0 ].Z + Fwd.Z * trench_fwd - Right.Z * trench_fwd );
-			glTexCoord2d( 0., texture_fwd_offset + textures_fwd );
-			glVertex3d( slice[ 0 ].X - Fwd.X * trench_fwd - Right.X * trench_fwd, slice[ 0 ].Y - Fwd.Y * trench_fwd - Right.Y * trench_fwd, slice[ 0 ].Z - Fwd.Z * trench_fwd - Right.Z * trench_fwd );
-			glTexCoord2d( textures_fwd / 2., textures_fwd + texture_fwd_offset );
-			glVertex3d( slice[ 0 ].X - Fwd.X * trench_fwd, slice[ 0 ].Y - Fwd.Y * trench_fwd, slice[ 0 ].Z - Fwd.Z * trench_fwd );
-			glTexCoord2d( textures_fwd / 2., texture_fwd_offset );
-			glVertex3d( slice[ 0 ].X + Fwd.X * trench_fwd, slice[ 0 ].Y + Fwd.Y * trench_fwd, slice[ 0 ].Z + Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( 0., texture_fwd_offset );
+			Batch.Vertex3d( slice[ 0 ].X + Fwd.X * trench_fwd - Right.X * trench_fwd, slice[ 0 ].Y + Fwd.Y * trench_fwd - Right.Y * trench_fwd, slice[ 0 ].Z + Fwd.Z * trench_fwd - Right.Z * trench_fwd );
+			Batch.TexCoord2d( 0., texture_fwd_offset + textures_fwd );
+			Batch.Vertex3d( slice[ 0 ].X - Fwd.X * trench_fwd - Right.X * trench_fwd, slice[ 0 ].Y - Fwd.Y * trench_fwd - Right.Y * trench_fwd, slice[ 0 ].Z - Fwd.Z * trench_fwd - Right.Z * trench_fwd );
+			Batch.TexCoord2d( textures_fwd / 2., textures_fwd + texture_fwd_offset );
+			Batch.Vertex3d( slice[ 0 ].X - Fwd.X * trench_fwd, slice[ 0 ].Y - Fwd.Y * trench_fwd, slice[ 0 ].Z - Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( textures_fwd / 2., texture_fwd_offset );
+			Batch.Vertex3d( slice[ 0 ].X + Fwd.X * trench_fwd, slice[ 0 ].Y + Fwd.Y * trench_fwd, slice[ 0 ].Z + Fwd.Z * trench_fwd );
 			
 			// Surface Right
-			glNormal3d( Up.X, Up.Y, Up.Z );
+			Batch.Normal3d( Up.X, Up.Y, Up.Z );
 			if( use_bumpmap )
 			{
-				glVertexAttrib3f( tangent_loc,   Right.X,  Right.Y,  Right.Z  );
-				glVertexAttrib3f( bitangent_loc, -(Fwd.X), -(Fwd.Y), -(Fwd.Z) );
+				Batch.Attrib3f( 0,   Right.X,  Right.Y,  Right.Z  );
+				Batch.Attrib3f( 1, -(Fwd.X), -(Fwd.Y), -(Fwd.Z) );
 			}
-			glTexCoord2d( 0., texture_fwd_offset );
-			glVertex3d( slice[ 1 ].X + Fwd.X * trench_fwd, slice[ 1 ].Y + Fwd.Y * trench_fwd, slice[ 1 ].Z + Fwd.Z * trench_fwd );
-			glTexCoord2d( 0., texture_fwd_offset + textures_fwd );
-			glVertex3d( slice[ 1 ].X - Fwd.X * trench_fwd, slice[ 1 ].Y - Fwd.Y * trench_fwd, slice[ 1 ].Z - Fwd.Z * trench_fwd );
-			glTexCoord2d( textures_fwd / 2., textures_fwd + texture_fwd_offset );
-			glVertex3d( slice[ 1 ].X - Fwd.X * trench_fwd + Right.X * trench_fwd, slice[ 1 ].Y - Fwd.Y * trench_fwd + Right.Y * trench_fwd, slice[ 1 ].Z - Fwd.Z * trench_fwd + Right.Z * trench_fwd );
-			glTexCoord2d( textures_fwd / 2., texture_fwd_offset );
-			glVertex3d( slice[ 1 ].X + Fwd.X * trench_fwd + Right.X * trench_fwd, slice[ 1 ].Y + Fwd.Y * trench_fwd + Right.Y * trench_fwd, slice[ 1 ].Z + Fwd.Z * trench_fwd + Right.Z * trench_fwd );
+			Batch.TexCoord2d( 0., texture_fwd_offset );
+			Batch.Vertex3d( slice[ 1 ].X + Fwd.X * trench_fwd, slice[ 1 ].Y + Fwd.Y * trench_fwd, slice[ 1 ].Z + Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( 0., texture_fwd_offset + textures_fwd );
+			Batch.Vertex3d( slice[ 1 ].X - Fwd.X * trench_fwd, slice[ 1 ].Y - Fwd.Y * trench_fwd, slice[ 1 ].Z - Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( textures_fwd / 2., textures_fwd + texture_fwd_offset );
+			Batch.Vertex3d( slice[ 1 ].X - Fwd.X * trench_fwd + Right.X * trench_fwd, slice[ 1 ].Y - Fwd.Y * trench_fwd + Right.Y * trench_fwd, slice[ 1 ].Z - Fwd.Z * trench_fwd + Right.Z * trench_fwd );
+			Batch.TexCoord2d( textures_fwd / 2., texture_fwd_offset );
+			Batch.Vertex3d( slice[ 1 ].X + Fwd.X * trench_fwd + Right.X * trench_fwd, slice[ 1 ].Y + Fwd.Y * trench_fwd + Right.Y * trench_fwd, slice[ 1 ].Z + Fwd.Z * trench_fwd + Right.Z * trench_fwd );
 		}
 		
 		if( cam_right >= TrenchWidth / -2. )
 		{
 			// Wall Left
-			glNormal3d( Right.X, Right.Y, Right.Z );
+			Batch.Normal3d( Right.X, Right.Y, Right.Z );
 			if( use_bumpmap )
 			{
-				glVertexAttrib3f( tangent_loc, -(Fwd.X), -(Fwd.Y), -(Fwd.Z) );
-				glVertexAttrib3f( bitangent_loc,  Up.X,     Up.Y,     Up.Z  );
+				Batch.Attrib3f( 0, -(Fwd.X), -(Fwd.Y), -(Fwd.Z) );
+				Batch.Attrib3f( 1,  Up.X,     Up.Y,     Up.Z  );
 			}
-			glTexCoord2d( -texture_fwd_offset, 0. );
-			glVertex3d( slice[ 0 ].X - Fwd.X * trench_fwd, slice[ 0 ].Y - Fwd.Y * trench_fwd, slice[ 0 ].Z - Fwd.Z * trench_fwd );
-			glTexCoord2d( -texture_fwd_offset, tx_depth );
-			glVertex3d( slice[ 2 ].X - Fwd.X * trench_fwd, slice[ 2 ].Y - Fwd.Y * trench_fwd, slice[ 2 ].Z - Fwd.Z * trench_fwd );
-			glTexCoord2d( -texture_fwd_offset + textures_fwd, tx_depth );
-			glVertex3d( slice[ 2 ].X + Fwd.X * trench_fwd, slice[ 2 ].Y + Fwd.Y * trench_fwd, slice[ 2 ].Z + Fwd.Z * trench_fwd );
-			glTexCoord2d( -texture_fwd_offset + textures_fwd, 0. );
-			glVertex3d( slice[ 0 ].X + Fwd.X * trench_fwd, slice[ 0 ].Y + Fwd.Y * trench_fwd, slice[ 0 ].Z + Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( -texture_fwd_offset, 0. );
+			Batch.Vertex3d( slice[ 0 ].X - Fwd.X * trench_fwd, slice[ 0 ].Y - Fwd.Y * trench_fwd, slice[ 0 ].Z - Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( -texture_fwd_offset, tx_depth );
+			Batch.Vertex3d( slice[ 2 ].X - Fwd.X * trench_fwd, slice[ 2 ].Y - Fwd.Y * trench_fwd, slice[ 2 ].Z - Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( -texture_fwd_offset + textures_fwd, tx_depth );
+			Batch.Vertex3d( slice[ 2 ].X + Fwd.X * trench_fwd, slice[ 2 ].Y + Fwd.Y * trench_fwd, slice[ 2 ].Z + Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( -texture_fwd_offset + textures_fwd, 0. );
+			Batch.Vertex3d( slice[ 0 ].X + Fwd.X * trench_fwd, slice[ 0 ].Y + Fwd.Y * trench_fwd, slice[ 0 ].Z + Fwd.Z * trench_fwd );
 		}
 		
 		if( cam_right <= TrenchWidth / 2. )
 		{
 			// Wall Right
-			glNormal3d( -(Right.X), -(Right.Y), -(Right.Z) );
+			Batch.Normal3d( -(Right.X), -(Right.Y), -(Right.Z) );
 			if( use_bumpmap )
 			{
-				glVertexAttrib3f( tangent_loc,  Fwd.X, Fwd.Y, Fwd.Z );
-				glVertexAttrib3f( bitangent_loc, Up.X,  Up.Y,  Up.Z );
+				Batch.Attrib3f( 0,  Fwd.X, Fwd.Y, Fwd.Z );
+				Batch.Attrib3f( 1, Up.X,  Up.Y,  Up.Z );
 			}
-			glTexCoord2d( texture_fwd_offset, 0. );
-			glVertex3d( slice[ 1 ].X + Fwd.X * trench_fwd, slice[ 1 ].Y + Fwd.Y * trench_fwd, slice[ 1 ].Z + Fwd.Z * trench_fwd );
-			glTexCoord2d( texture_fwd_offset, tx_depth );
-			glVertex3d( slice[ 3 ].X + Fwd.X * trench_fwd, slice[ 3 ].Y + Fwd.Y * trench_fwd, slice[ 3 ].Z + Fwd.Z * trench_fwd );
-			glTexCoord2d( texture_fwd_offset + textures_fwd, tx_depth );
-			glVertex3d( slice[ 3 ].X - Fwd.X * trench_fwd, slice[ 3 ].Y - Fwd.Y * trench_fwd, slice[ 3 ].Z - Fwd.Z * trench_fwd );
-			glTexCoord2d( texture_fwd_offset + textures_fwd, 0. );
-			glVertex3d( slice[ 1 ].X - Fwd.X * trench_fwd, slice[ 1 ].Y - Fwd.Y * trench_fwd, slice[ 1 ].Z - Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( texture_fwd_offset, 0. );
+			Batch.Vertex3d( slice[ 1 ].X + Fwd.X * trench_fwd, slice[ 1 ].Y + Fwd.Y * trench_fwd, slice[ 1 ].Z + Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( texture_fwd_offset, tx_depth );
+			Batch.Vertex3d( slice[ 3 ].X + Fwd.X * trench_fwd, slice[ 3 ].Y + Fwd.Y * trench_fwd, slice[ 3 ].Z + Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( texture_fwd_offset + textures_fwd, tx_depth );
+			Batch.Vertex3d( slice[ 3 ].X - Fwd.X * trench_fwd, slice[ 3 ].Y - Fwd.Y * trench_fwd, slice[ 3 ].Z - Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( texture_fwd_offset + textures_fwd, 0. );
+			Batch.Vertex3d( slice[ 1 ].X - Fwd.X * trench_fwd, slice[ 1 ].Y - Fwd.Y * trench_fwd, slice[ 1 ].Z - Fwd.Z * trench_fwd );
 		}
 	
 		if( use_shaders )
 		{
-			glEnd();
+			Batch.End();
 			Raptor::Game->ShaderMgr.Set3f( "AmbientColor", BottomAmbient.Red, BottomAmbient.Green, BottomAmbient.Blue );
 			Raptor::Game->ShaderMgr.Set3f( "DiffuseColor", BottomDiffuse.Red, BottomDiffuse.Green, BottomDiffuse.Blue );
 			Raptor::Game->ShaderMgr.Set3f( "SpecularColor", BottomSpecular.Red, BottomSpecular.Green, BottomSpecular.Blue );
 			Raptor::Game->ShaderMgr.Set1f( "Shininess", BottomShininess );
 			Raptor::Game->ShaderMgr.Set1f( "BumpScale", use_bumpmap ? BottomBumpScale : 0.f );
-			glBegin( GL_QUADS );
+			Batch.Begin( GL_QUADS );
 		}
 		
 		if( cam_up >= -TrenchDepth )
 		{
 			// Bottom
-			glNormal3d( Up.X, Up.Y, Up.Z );
+			Batch.Normal3d( Up.X, Up.Y, Up.Z );
 			if( use_bumpmap )
 			{
-				glVertexAttrib3f( tangent_loc,   Right.X,  Right.Y,  Right.Z  );
-				glVertexAttrib3f( bitangent_loc, -(Fwd.X), -(Fwd.Y), -(Fwd.Z) );
+				Batch.Attrib3f( 0,   Right.X,  Right.Y,  Right.Z  );
+				Batch.Attrib3f( 1, -(Fwd.X), -(Fwd.Y), -(Fwd.Z) );
 			}
-			glTexCoord2d( 0., texture_fwd_offset );
-			glVertex3d( slice[ 2 ].X + Fwd.X * trench_fwd, slice[ 2 ].Y + Fwd.Y * trench_fwd, slice[ 2 ].Z + Fwd.Z * trench_fwd );
-			glTexCoord2d( 0., textures_fwd + texture_fwd_offset );
-			glVertex3d( slice[ 2 ].X - Fwd.X * trench_fwd, slice[ 2 ].Y - Fwd.Y * trench_fwd, slice[ 2 ].Z - Fwd.Z * trench_fwd );
-			glTexCoord2d( tx_width, textures_fwd + texture_fwd_offset );
-			glVertex3d( slice[ 3 ].X - Fwd.X * trench_fwd, slice[ 3 ].Y - Fwd.Y * trench_fwd, slice[ 3 ].Z - Fwd.Z * trench_fwd );
-			glTexCoord2d( tx_width, texture_fwd_offset );
-			glVertex3d( slice[ 3 ].X + Fwd.X * trench_fwd, slice[ 3 ].Y + Fwd.Y * trench_fwd, slice[ 3 ].Z + Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( 0., texture_fwd_offset );
+			Batch.Vertex3d( slice[ 2 ].X + Fwd.X * trench_fwd, slice[ 2 ].Y + Fwd.Y * trench_fwd, slice[ 2 ].Z + Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( 0., textures_fwd + texture_fwd_offset );
+			Batch.Vertex3d( slice[ 2 ].X - Fwd.X * trench_fwd, slice[ 2 ].Y - Fwd.Y * trench_fwd, slice[ 2 ].Z - Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( tx_width, textures_fwd + texture_fwd_offset );
+			Batch.Vertex3d( slice[ 3 ].X - Fwd.X * trench_fwd, slice[ 3 ].Y - Fwd.Y * trench_fwd, slice[ 3 ].Z - Fwd.Z * trench_fwd );
+			Batch.TexCoord2d( tx_width, texture_fwd_offset );
+			Batch.Vertex3d( slice[ 3 ].X + Fwd.X * trench_fwd, slice[ 3 ].Y + Fwd.Y * trench_fwd, slice[ 3 ].Z + Fwd.Z * trench_fwd );
 		}
 		
-	glEnd();
+	Batch.End();
 	
 	if( change_shaders )
 		Raptor::Game->ShaderMgr.Select( prev_shader );

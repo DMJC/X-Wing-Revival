@@ -37,6 +37,7 @@ bool Mission::Parse( std::vector<std::string> &lines )
 
 	bool reading_properties = true;
 	int8_t current_system = -1;  // -1 = not inside a system block
+	int8_t event_system = -1;    // -1 = global, >= 0 = system-specific
 	uint8_t event_trigger = MissionEvent::TRIGGER_NEVER;
 	uint32_t event_trigger_flags = 0x00000000;
 	double event_time = 0.;
@@ -98,16 +99,19 @@ bool Mission::Parse( std::vector<std::string> &lines )
 			{
 				// Second occurrence of "system N" closes the block.
 				current_system = -1;
+				event_system = -1;
 			}
 			else
 			{
 				// First occurrence opens a new system block.
 				current_system = (int8_t)sys_num;
+				event_system = (int8_t)sys_num;
 				reading_properties = false;
 				Systems.push_back( MissionSystem(sys_num) );
 			}
 		}
-		else if( (current_system >= 0) && ! event_trigger_line )
+		else if( (current_system >= 0) && ! event_trigger_line
+		&&  ((var == "bg") || (var == "player_spawn") || (var == "navpoint") || (var == "asteroids") || (var == "no_enemy_follow")) )
 		{
 			// Inside a system block: handle system-specific properties.
 			MissionSystem &sys = Systems.back();
@@ -122,6 +126,10 @@ bool Mission::Parse( std::vector<std::string> &lines )
 				sys.SpawnY = atof( args.at(1).c_str() );
 				sys.SpawnZ = atof( args.at(2).c_str() );
 			}
+			else if( var == "no_enemy_follow" )
+			{
+				sys.NoEnemyFollow = true;
+			}
 			else if( (var == "navpoint") && args.size() >= 5 )
 			{
 				MissionNavPoint np;
@@ -135,7 +143,6 @@ bool Mission::Parse( std::vector<std::string> &lines )
 					np.VariableName = args.at(7);
 				sys.NavPoints.push_back( np );
 			}
-			// Non-navpoint, non-system lines fall through to event parsing below.
 		}
 		else if( reading_properties && args.size() && ! event_trigger_line )
 		{
@@ -273,6 +280,8 @@ bool Mission::Parse( std::vector<std::string> &lines )
 						event_trigger = MissionEvent::TRIGGER_ON_SPAWN;
 					else if( var == "respawn" )
 						event_trigger = MissionEvent::TRIGGER_ON_RESPAWN;
+					else if( (var == "arrive") || (var == "arrival") )
+						event_trigger = MissionEvent::TRIGGER_ON_ARRIVE;
 					else if( var.at(0) == '#' )
 						event_number = atoi( var.c_str() + 1 );
 					else if( (var == "target") && args.size() )
@@ -310,8 +319,9 @@ bool Mission::Parse( std::vector<std::string> &lines )
 		else if( event_trigger )
 		{
 			// Handle events listed after a trigger.
-			
+
 			Events.push_back( MissionEvent( event_trigger, event_trigger_flags, event_time, event_delay, event_number, event_target, event_target_group, event_if, event_chance, event_by_name, event_by_group ) );
+			Events.back().SystemNumber = event_system;
 			
 			if( (var == "alert") && (args.size() >= 2) )
 			{
@@ -370,6 +380,8 @@ bool Mission::Parse( std::vector<std::string> &lines )
 						spawn_flags |= MissionEvent::SPAWNFLAG_SILENT;
 					else if( subvar == "respawn" )
 						spawn_flags |= MissionEvent::SPAWNFLAG_RESPAWN;
+					else if( subvar == "follow" )
+						spawn_flags |= MissionEvent::SPAWNFLAG_FOLLOW;
 					else if( (subvar == "class") && args.size() )
 					{
 						spawn_class = args.at(0);
@@ -533,7 +545,9 @@ MissionEvent::MissionEvent( uint8_t trigger, uint32_t trigger_flags, double time
 	SpawnGroup = 0;
 	SpawnFlags = 0;
 	ObjL = ObjH = ObjW = 0.;
-	
+
+	SystemNumber = -1;
+
 	Triggered = Used = 0;
 	GoTime = 0.;
 }
@@ -552,7 +566,7 @@ MissionEvent::MissionEvent( const MissionEvent &other )
 	Chance = other.Chance;
 	ByName = other.ByName;
 	ByGroup = other.ByGroup;
-	
+
 	Message = other.Message;
 	MessageType = other.MessageType;
 	Sound = other.Sound;
@@ -575,10 +589,12 @@ MissionEvent::MissionEvent( const MissionEvent &other )
 	ObjW = other.ObjW;
 	
 	JumpOut = other.JumpOut;
-	
+
 	PropertyName = other.PropertyName;
 	PropertyValue = other.PropertyValue;
-	
+
+	SystemNumber = other.SystemNumber;
+
 	Triggered = other.Triggered;
 	Used = other.Used;
 	GoTime = other.GoTime;
@@ -674,7 +690,25 @@ bool MissionEvent::Ready( void )
 	
 	if( Used && (Used >= Number) && ! (TriggerFlags & TRIGGERFLAG_REPEAT) )
 		return false;
-	
+
+	if( SystemNumber >= 0 )
+	{
+		bool player_in_system = false;
+		server->Data.Lock.Lock();
+		for( std::map<uint32_t,GameObject*>::const_iterator obj_iter = server->Data.GameObjects.begin(); obj_iter != server->Data.GameObjects.end(); obj_iter ++ )
+		{
+			if( (obj_iter->second->Type() == XWing::Object::SHIP) && obj_iter->second->PlayerID )
+			{
+				if( ((const Ship*)(obj_iter->second))->SystemNumber == (uint8_t)SystemNumber )
+					player_in_system = true;
+				break;
+			}
+		}
+		server->Data.Lock.Unlock();
+		if( ! player_in_system )
+			return false;
+	}
+
 	if( TriggerIf.size() && ! server->CheckCondition( TriggerIf ) )
 		return false;
 	
@@ -885,6 +919,7 @@ void MissionEvent::FireWhenReady( std::set<uint32_t> *add_object_ids )
 			ship->Group = SpawnGroup;
 			ship->IsMissionObjective =   SpawnFlags & SPAWNFLAG_OBJECTIVE;
 			ship->CanRespawn         =   SpawnFlags & SPAWNFLAG_RESPAWN;
+			ship->FollowJumps        =   SpawnFlags & SPAWNFLAG_FOLLOW;
 			ship->JumpProgress       = ((SpawnFlags & SPAWNFLAG_SILENT) || ((Trigger == TRIGGER_ALWAYS) && ! (Time || Delay || TriggerIf.size()))) ? 1. : 0.;  // Jump in unless spawning at mission start.
 			ship->SetThrottle( 1., 999. );
 			
@@ -899,12 +934,15 @@ void MissionEvent::FireWhenReady( std::set<uint32_t> *add_object_ids )
 				ship->Name = sc->LongName;
 			
 			ship->SetPos( X, Y, Z );
-			
+
 			if( FwdX || FwdY || FwdZ )
 				ship->SetFwdVec( FwdX, FwdY, FwdZ );
+
+			if( SystemNumber >= 0 )
+				ship->SystemNumber = (uint8_t) SystemNumber;
 		}
 	}
-	
+
 	if( SpawnServerObj.length() )
 	{
 		Obstacle *obstacle = new Obstacle( SpawnClientObj, SpawnServerObj );

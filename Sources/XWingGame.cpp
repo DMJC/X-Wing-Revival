@@ -632,7 +632,7 @@ void XWingGame::SetDefaults( void )
 		Cfg.Settings[ "empire_difficulty" ] = empire_difficulty;
 	
 	#ifndef __APPLE__
-		Cfg.Settings[ "g_shader_version" ] = "130";  // Allow slightly more efficient worldspace blastpoint translation (flat in/out vs varying).
+		Cfg.Settings[ "g_shader_version" ] = "330";  // Use GLSL 330 core profile for modern OpenGL.
 	#endif
 	
 	#ifdef APPLE_POWERPC

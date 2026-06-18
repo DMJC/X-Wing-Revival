@@ -115,7 +115,8 @@ CampaignMenuTeamButton::~CampaignMenuTeamButton()
 
 void CampaignMenuTeamButton::Draw( void )
 {
-	glPushAttrib( GL_VIEWPORT_BIT );
+	GLint savedViewport[4];
+	glGetIntegerv( GL_VIEWPORT, savedViewport );
 	// In VR, shift the viewport to match the per-eye convergence offset that Setup2D applies for 2D content.
 	int vr_shift_x = 0;
 	if( Raptor::Game->Gfx.DrawTo && Raptor::Game->Gfx.DrawTo->VRProjection )
@@ -217,7 +218,7 @@ void CampaignMenuTeamButton::Draw( void )
 			PopOut = 0.;
 	}
 	
-	glPopAttrib();
+	glViewport( savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3] );
 }
 
 

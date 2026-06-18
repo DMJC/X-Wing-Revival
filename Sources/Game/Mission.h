@@ -32,9 +32,10 @@ struct MissionSystem
 	uint8_t Number;
 	std::string Background;
 	double SpawnX, SpawnY, SpawnZ;
+	bool NoEnemyFollow;
 	std::vector<MissionNavPoint> NavPoints;
 
-	MissionSystem( uint8_t number = 0 ) : Number(number), SpawnX(0.), SpawnY(0.), SpawnZ(0.) {}
+	MissionSystem( uint8_t number = 0 ) : Number(number), SpawnX(0.), SpawnY(0.), SpawnZ(0.), NoEnemyFollow(false) {}
 };
 
 
@@ -80,7 +81,9 @@ public:
 	std::vector<std::string> JumpOut;
 	
 	std::string PropertyName, PropertyValue;
-	
+
+	int8_t SystemNumber;
+
 	size_t Triggered, Used;
 	double GoTime;
 	
@@ -107,7 +110,8 @@ public:
 		TRIGGER_ON_DAMAGE,
 		TRIGGER_ON_DESTROYED,
 		TRIGGER_ON_SPAWN,
-		TRIGGER_ON_RESPAWN
+		TRIGGER_ON_RESPAWN,
+		TRIGGER_ON_ARRIVE
 	};
 	
 	enum
@@ -139,6 +143,7 @@ public:
 		SPAWNFLAG_OBJECTIVE = 0x04,
 		SPAWNFLAG_SILENT    = 0x08,
 		SPAWNFLAG_BY_PLAYER = 0x10,
-		SPAWNFLAG_RESPAWN   = 0x20
+		SPAWNFLAG_RESPAWN   = 0x20,
+		SPAWNFLAG_FOLLOW    = 0x40
 	};
 };

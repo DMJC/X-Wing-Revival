@@ -6,7 +6,7 @@ precision highp float;
 // Shader variables.
 
 #ifndef VERSION
-#define VERSION 110
+#define VERSION 330
 #endif
 
 #ifndef LIGHT_QUALITY
@@ -53,6 +53,18 @@ precision highp float;
 #endif
 
 
+// Vertex attribute inputs:
+layout(location = 0) in vec4 aVertex;
+layout(location = 1) in vec4 aTexCoord;
+layout(location = 2) in vec3 aNormal;
+
+// Matrix uniforms:
+uniform mat4 uProjection;
+uniform mat4 uModelView;
+
+// Texture coordinate output:
+out vec4 vTexCoord;
+
 // Camera position:
 uniform vec3 CamPos;
 
@@ -67,10 +79,10 @@ uniform vec3 SpecularColor;
 uniform float Shininess;
 
 #if LIGHT_QUALITY >= 3
-attribute vec3 BumpTangent;
-attribute vec3 BumpBitangent;
-varying vec3 WorldTangent;
-varying vec3 WorldBitangent;
+layout(location = 4) in vec3 BumpTangent;
+layout(location = 5) in vec3 BumpBitangent;
+out vec3 WorldTangent;
+out vec3 WorldBitangent;
 #endif
 
 // World light properties:
@@ -129,14 +141,14 @@ uniform float PointLight3Radius;
 #if (LIGHT_QUALITY >= 1) && (LIGHT_QUALITY < 4)
 // Do ambient light and directional diffuse per-vertex when not bump-mapping.
 
-varying vec3 Color;
+out vec3 Color;
 
 #if DIRECTIONAL_LIGHTS || (POINT_LIGHTS && (LIGHT_QUALITY < 2))
 float directional_light( vec3 normal, vec3 light_dir, float wrap_around )
 {
 	// Wrap-around 0 is true Lambert lighting, where illumination ends at 90 degrees.
 	// Wrap-around 1 means 90-degree surfaces receive 50% illumination.
-	
+
 	return max( (dot( normal, light_dir ) + wrap_around) / (1.0 + wrap_around), 0.0 );
 }
 #endif
@@ -145,8 +157,8 @@ float directional_light( vec3 normal, vec3 light_dir, float wrap_around )
 #if LIGHT_QUALITY >= 2
 // Provide the fragment shader with the data it needs to operate per-pixel.
 
-varying vec3 WorldPos;
-varying vec3 WorldNormal;
+out vec3 WorldPos;
+out vec3 WorldNormal;
 
 #elif LIGHT_QUALITY
 // Do the work per-vertex and interpolate for the fragment shader.
@@ -174,18 +186,14 @@ uniform vec3 BlastPoint[ BLASTPOINTS ];
 
 #if (BLASTPOINT_QUALITY >= 1) && (LIGHT_QUALITY < 2)
 // Provide the fragment shader with the data it needs to operate per-pixel.
-varying vec3 WorldPos;
+out vec3 WorldPos;
 #endif
 
 #if BLASTPOINT_QUALITY >= 1
-#if VERSION >= 130
 flat out vec3 WorldBlastPoint[ BLASTPOINTS ];
 #else
-varying vec3 WorldBlastPoint[ BLASTPOINTS ];
-#endif
-#else
 uniform float BlastRadius[ BLASTPOINTS ];
-varying float BlastDarken;
+out float BlastDarken;
 #endif
 
 #endif  // if BLASTPOINTS
@@ -194,12 +202,12 @@ varying float BlastDarken;
 void main( void )
 {
 	// Calculate the vertex in worldspace and apply it to the rendering matrices.
-	vec4 world_vertex = vec4( Pos.x + dot(gl_Vertex.xyz,XVec), Pos.y + dot(gl_Vertex.xyz,YVec), Pos.z + dot(gl_Vertex.xyz,ZVec), gl_Vertex.w );
-	gl_Position = gl_ModelViewProjectionMatrix * world_vertex;
-	
+	vec4 world_vertex = vec4( Pos.x + dot(aVertex.xyz,XVec), Pos.y + dot(aVertex.xyz,YVec), Pos.z + dot(aVertex.xyz,ZVec), aVertex.w );
+	gl_Position = uProjection * uModelView * world_vertex;
+
 	// Pass along texture coordinates to be interpolated for the fragment shader.
-	gl_TexCoord[0] = gl_MultiTexCoord0;
-	
+	vTexCoord = aTexCoord;
+
 	#if BLASTPOINTS > 0
 		#if BLASTPOINT_QUALITY >= 1
 			#if LIGHT_QUALITY < 2
@@ -211,7 +219,7 @@ void main( void )
 		#else
 			// Low quality blastpoint is done per vertex.
 			BlastDarken = 1.0;
-			
+
 			float blast_radius = 0.0;
 			for( int i = 0; i < BLASTPOINTS; i ++ )
 			{
@@ -225,21 +233,21 @@ void main( void )
 				#endif
 				blast_radius = max( blast_radius, BlastRadius[ i ] );
 			}
-			
+
 			// Avoid darkening screens and glowing engines.
 			BlastDarken = min( 1.0, max( BlastDarken, length(AmbientColor) * 10.0 ) );
 		#endif
 	#endif
-	
+
 	#if LIGHT_QUALITY >= 2
 		// We'll do most of the work in the fragment shader, per-pixel.
-		
+
 		// Calculate the normal vector in worldspace.
-		WorldNormal = normalize( vec3( dot(gl_Normal,XVec), dot(gl_Normal,YVec), dot(gl_Normal,ZVec) ) );
-		
+		WorldNormal = normalize( vec3( dot(aNormal,XVec), dot(aNormal,YVec), dot(aNormal,ZVec) ) );
+
 		// Get the position of each vertex to interpolate in the fragment shader.
 		WorldPos = world_vertex.xyz;
-		
+
 		#ifdef FRONT_AND_BACK
 			// Invert the normal vector if it is facing away from the camera.
 			// This emulates the GL_FRONT_AND_BACK lighting style.
@@ -247,17 +255,17 @@ void main( void )
 			float normal_dot_cam = dot( WorldNormal, vec_to_cam );
 			WorldNormal *= normal_dot_cam / abs(normal_dot_cam);
 		#endif
-		
+
 		#if LIGHT_QUALITY >= 3
 			// Translate tangent and bitangent vectors into worldspace for bump-mapping.
 			WorldTangent   = normalize( vec3( dot(BumpTangent,  XVec), dot(BumpTangent,  YVec), dot(BumpTangent,  ZVec) ) );
 			WorldBitangent = normalize( vec3( dot(BumpBitangent,XVec), dot(BumpBitangent,YVec), dot(BumpBitangent,ZVec) ) );
 		#endif
-		
+
 		#if LIGHT_QUALITY < 4
 			// Ambient light per-vertex.
 			vec3 diffuse = AMBIENT_LIGHT;
-			
+
 			// Directional diffuse per-vertex.
 			#if DIRECTIONAL_LIGHTS > 0
 				diffuse += directional_light( WorldNormal, DirectionalLight0Dir, DirectionalLight0WrapAround ) * DirectionalLight0Color;
@@ -271,30 +279,30 @@ void main( void )
 			#if DIRECTIONAL_LIGHTS > 3
 				diffuse += directional_light( WorldNormal, DirectionalLight3Dir, DirectionalLight3WrapAround ) * DirectionalLight3Color;
 			#endif
-			
+
 			Color = AMBIENT_COLOR + (DIFFUSE_COLOR*diffuse);
 		#endif
-		
+
 	#elif LIGHT_QUALITY
 		// We'll do most of the work here, per-vertex.
-		
+
 		// Calculate the normal vector in worldspace.
-		vec3 world_normal = normalize( vec3( dot(gl_Normal,XVec), dot(gl_Normal,YVec), dot(gl_Normal,ZVec) ) );
-		
+		vec3 world_normal = normalize( vec3( dot(aNormal,XVec), dot(aNormal,YVec), dot(aNormal,ZVec) ) );
+
 		// Calculate the normalized vector from the vertex to the camera.
 		vec3 vec_to_cam = normalize( CamPos - world_vertex.xyz );
-		
+
 		#ifdef FRONT_AND_BACK
 			// Invert the normal vector if it is facing away from the camera.
 			// This emulates the GL_FRONT_AND_BACK lighting style.
 			float normal_dot_cam = dot( world_normal, vec_to_cam );
 			world_normal *= normal_dot_cam / abs(normal_dot_cam);
 		#endif
-		
+
 		// Calculate total color of diffuse and specular lighting.
 		vec3 diffuse = AMBIENT_LIGHT;
 		vec3 specular = vec3( 0.0, 0.0, 0.0 );
-		
+
 		#if DIRECTIONAL_LIGHTS > 0
 			diffuse += directional_light( world_normal, DirectionalLight0Dir, DirectionalLight0WrapAround ) * DirectionalLight0Color;
 			specular += pow( directional_light( vec_to_cam, reflect(-1.0*DirectionalLight0Dir,world_normal), DirectionalLight0WrapAround ), SHININESS ) * DirectionalLight0Color;
@@ -331,7 +339,7 @@ void main( void )
 			diffuse += point_light( world_normal, light_vec, 0.0, PointLight3Radius ) * PointLight3Color;
 			specular += point_light_specular( world_normal, light_vec, vec_to_cam, 0.0, PointLight3Radius, SHININESS ) * PointLight3Color;
 		#endif
-		
+
 		Color = AMBIENT_COLOR + (DIFFUSE_COLOR*diffuse) + (SPECULAR_COLOR*specular);
 	#endif
 }

@@ -13,7 +13,7 @@ OFLAGS = -O$(O) -fomit-frame-pointer -ftree-vectorize -fno-strict-aliasing -flto
 WFLAGS = -Wall -Wextra -Wno-multichar -Wno-unused-parameter -Wno-overloaded-virtual
 INC = /opt/local/include /opt/local/include/SDL /usr/local/include /usr/include
 LIBDIR = /usr/lib64
-LIB = libSDLmain.a libSDL_net.so libSDL_mixer.so libSDL_ttf.so libSDL_image.so libSDL.so libGLEW.so libGLU.so libGL.so libopenvr_api.so
+LIB = libSDLmain.a libSDL_net.so libSDL_mixer.so libSDL_ttf.so libSDL_image.so libSDL.so libGLEW.so libGL.so libopenvr_api.so
 DEF =
 EXE = Data/xwingrev
 

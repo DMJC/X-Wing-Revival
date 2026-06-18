@@ -2637,9 +2637,7 @@ void ShipEngine::DrawAt( const Pos3D *pos, float alpha, double scale )
 	if( use_shaders )
 		Raptor::Game->ShaderMgr.StopShaders();
 	
-	glEnable( GL_TEXTURE_2D );
-	glBindTexture( GL_TEXTURE_2D, Texture.CurrentFrame() );
-	glColor4f( DrawColor.Red, DrawColor.Green, DrawColor.Blue, DrawColor.Alpha * alpha );
+	Raptor::Game->Gfx.BindTexture( Texture.CurrentFrame() );
 	
 	// Calculate corners.
 	double radius = Radius * scale;
@@ -2650,28 +2648,29 @@ void ShipEngine::DrawAt( const Pos3D *pos, float alpha, double scale )
 	br.RotateAround( &(Raptor::Game->Cam.Fwd), 180. );
 	bl.RotateAround( &(Raptor::Game->Cam.Fwd), 180. );
 	
-	glBegin( GL_QUADS );
-		
+	DynamicBatch &Batch = Raptor::Game->Gfx.Batch;
+	Batch.Begin( GL_QUADS );
+		Batch.Color4f( DrawColor.Red, DrawColor.Green, DrawColor.Blue, DrawColor.Alpha * alpha );
+
 		// Top-left
-		glTexCoord2i( 0, 0 );
-		glVertex3d( pos->X + tl.X, pos->Y + tl.Y, pos->Z + tl.Z );
-		
+		Batch.TexCoord2i( 0, 0 );
+		Batch.Vertex3d( pos->X + tl.X, pos->Y + tl.Y, pos->Z + tl.Z );
+
 		// Bottom-left
-		glTexCoord2i( 0, 1 );
-		glVertex3d( pos->X + bl.X, pos->Y + bl.Y, pos->Z + bl.Z );
-		
+		Batch.TexCoord2i( 0, 1 );
+		Batch.Vertex3d( pos->X + bl.X, pos->Y + bl.Y, pos->Z + bl.Z );
+
 		// Bottom-right
-		glTexCoord2i( 1, 1 );
-		glVertex3d( pos->X + br.X, pos->Y + br.Y, pos->Z + br.Z );
-		
+		Batch.TexCoord2i( 1, 1 );
+		Batch.Vertex3d( pos->X + br.X, pos->Y + br.Y, pos->Z + br.Z );
+
 		// Top-right
-		glTexCoord2i( 1, 0 );
-		glVertex3d( pos->X + tr.X, pos->Y + tr.Y, pos->Z + tr.Z );
-		
-	glEnd();
+		Batch.TexCoord2i( 1, 0 );
+		Batch.Vertex3d( pos->X + tr.X, pos->Y + tr.Y, pos->Z + tr.Z );
+
+	Batch.End();
 	
-	glDisable( GL_TEXTURE_2D );
-	glColor4f( 1.f, 1.f, 1.f, 1.f );
+	Raptor::Game->Gfx.BindTexture( 0 );
 	
 	if( use_shaders )
 		Raptor::Game->ShaderMgr.ResumeShaders();
