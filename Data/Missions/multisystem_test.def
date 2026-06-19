@@ -62,7 +62,7 @@ at 0:00
 spawn empire objective COR "Carnivore" at 10000500 600 0 facing -1 0 0
 spawn empire objective ISD "Obliterator" at 20000600 800 0 facing -1 0 0
 
-on destroyed empire_ship if ( name "Carnivore" )
+on destroyed empire "Carnivore"
 endor_visible true
 wait 2
 message The Carnivore is down! Intel shows the Obliterator is at Endor. Jump point is now available.

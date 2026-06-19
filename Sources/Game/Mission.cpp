@@ -872,7 +872,15 @@ void MissionEvent::FireWhenReady( std::set<uint32_t> *add_object_ids )
 		else if( Str::EqualsInsensitive( PropertyName, "mission_objs" ) )
 			server->SetProperty( PropertyName, PropertyValue );  // XWingServer::SetProperty sends mission_objs to clients.
 		else
+		{
 			server->Data.SetProperty( PropertyName, value );
+
+			Packet prop_update( Raptor::Packet::INFO );
+			prop_update.AddUShort( 1 );
+			prop_update.AddString( PropertyName );
+			prop_update.AddString( value );
+			server->Net.SendAll( &prop_update );
+		}
 	}
 	
 	if( SpawnFlags & SPAWNFLAG_BY_PLAYER )
