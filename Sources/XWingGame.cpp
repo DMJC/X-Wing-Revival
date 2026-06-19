@@ -1077,13 +1077,27 @@ void XWingGame::Update( double dt )
 #ifdef DEATHSTAR_GRAVITY
 	DeathStar *deathstar = NULL;
 #endif
+	// First pass: find player ship for filtering.
+	for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
+	{
+		if( (obj_iter->second->Type() == XWing::Object::SHIP) && (obj_iter->second->PlayerID == PlayerID) )
+		{
+			my_ship = (Ship*) obj_iter->second;
+			break;
+		}
+	}
+	uint8_t my_system = my_ship ? my_ship->SystemNumber : 0;
 	for( std::map<uint32_t,GameObject*>::iterator obj_iter = Data.GameObjects.begin(); obj_iter != Data.GameObjects.end(); obj_iter ++ )
 	{
 		if( obj_iter->second->Type() == XWing::Object::SHIP )
 		{
 			Ship *ship = (Ship*) obj_iter->second;
+			if( my_system && ship->SystemNumber && (ship->SystemNumber != my_system) )
+				continue;
+			if( my_ship && (ship != my_ship) && (my_ship->Dist(ship) > 50000.) )
+				continue;
 			ships.push_back( ship );
-			
+
 			if( ship->PlayerID == PlayerID )
 				my_ship = ship;
 		}

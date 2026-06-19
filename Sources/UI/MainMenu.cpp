@@ -164,7 +164,7 @@ void MainMenu::Draw( void )
 		float fog_alpha = std::min<float>( FogTime / 12.f, 0.25f );
 		
 		DynamicBatch &Batch = Raptor::Game->Gfx.Batch;
-		Batch.Begin( GL_QUADS );
+		Batch.Begin( GL_TRIANGLE_FAN );
 
 			Batch.Color4f( 0.41f, 0.56f, 0.58f, fog_alpha );
 
@@ -183,6 +183,9 @@ void MainMenu::Draw( void )
 			// Top-right
 			Batch.TexCoord2d( (FogTime * -0.03) + (0.5 * Rect.h / fog_h1), 0 );
 			Batch.Vertex2i( fog_x2, Rect.h - fog_h1 );
+
+		Batch.End();
+		Batch.Begin( GL_TRIANGLE_FAN );
 
 			Batch.Color4f( 0.41f, 0.54f, 0.55f, fog_alpha );
 

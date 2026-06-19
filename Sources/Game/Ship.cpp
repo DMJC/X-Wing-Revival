@@ -2649,7 +2649,8 @@ void ShipEngine::DrawAt( const Pos3D *pos, float alpha, double scale )
 	bl.RotateAround( &(Raptor::Game->Cam.Fwd), 180. );
 	
 	DynamicBatch &Batch = Raptor::Game->Gfx.Batch;
-	Batch.Begin( GL_QUADS );
+//	Batch.Begin( GL_QUADS ); invalid for GL4.6
+	Batch.Begin( GL_TRIANGLE_FAN );
 		Batch.Color4f( DrawColor.Red, DrawColor.Green, DrawColor.Blue, DrawColor.Alpha * alpha );
 
 		// Top-left

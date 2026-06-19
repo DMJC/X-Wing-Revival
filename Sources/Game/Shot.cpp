@@ -793,7 +793,8 @@ void Shot::Draw( void )
 		{
 			if( ShotType == TYPE_SUPERLASER )
 			{
-				Batch.Begin( GL_QUADS );
+//				Batch.Begin( GL_QUADS ); // invalid for GL4.6
+				Batch.Begin( GL_TRIANGLE_FAN );
 					
 					// Rear CW
 					Batch.TexCoord2d( 0., 0.4 );
@@ -848,7 +849,8 @@ void Shot::Draw( void )
 			}
 		}
 		
-		Batch.Begin( GL_QUADS );
+//		Batch.Begin( GL_QUADS ); // invalid for GL 4.6
+		Batch.Begin( GL_TRIANGLE_FAN );
 			
 			// Muzzle flash on first frame.
 			double scale = WidthScale;  // Flicker
@@ -895,7 +897,9 @@ void Shot::Draw( void )
 		{
 			if( ShotType == TYPE_SUPERLASER )
 			{
-				Batch.Begin( GL_QUADS );
+//                              Batch.Begin( GL_QUADS ); // invalid for GL4.6
+                                Batch.Begin( GL_TRIANGLE_FAN );
+
 					
 					// Rear CW
 					Batch.TexCoord2d( 0., 0.4 );
@@ -915,6 +919,8 @@ void Shot::Draw( void )
 					
 				if( Raptor::Game->Cam.Fwd.Dot(&Fwd) > 0.9 )
 				{
+					Batch.End(); // GL_TRIANGLE_FAN
+					Batch.Begin( GL_TRIANGLE_FAN );
 						// Rear Outside
 						Batch.TexCoord2i( 0, 0 );
 						Batch.Vertex3d( X + out.X + Fwd.X * behind, Y + out.Y + Fwd.Y * behind, Z + out.Z + Fwd.Z * behind );

@@ -551,10 +551,28 @@ void RenderLayer::Draw( void )
 	std::list<Asteroid*> asteroids;
 	std::list<Obstacle*> obstacles;
 	DeathStar *deathstar = NULL;
+	uint8_t player_system = 0;
+	Ship *player_ship_for_filter = NULL;
+	for( std::map<uint32_t,GameObject*>::iterator obj_iter = game->Data.GameObjects.begin(); obj_iter != game->Data.GameObjects.end(); obj_iter ++ )
+	{
+		if( (obj_iter->second->Type() == XWing::Object::SHIP) && (obj_iter->second->PlayerID == game->PlayerID) )
+		{
+			player_ship_for_filter = (Ship*) obj_iter->second;
+			player_system = player_ship_for_filter->SystemNumber;
+			break;
+		}
+	}
 	for( std::map<uint32_t,GameObject*>::iterator obj_iter = game->Data.GameObjects.begin(); obj_iter != game->Data.GameObjects.end(); obj_iter ++ )
 	{
 		if( obj_iter->second->Type() == XWing::Object::SHIP )
-			ships.push_back( (Ship*) obj_iter->second );
+		{
+			Ship *ship = (Ship*) obj_iter->second;
+			if( player_system && ship->SystemNumber && (ship->SystemNumber != player_system) )
+				continue;
+			if( player_ship_for_filter && (ship != player_ship_for_filter) && (player_ship_for_filter->Dist(ship) > 50000.) )
+				continue;
+			ships.push_back( ship );
+		}
 		else if( obj_iter->second->Type() == XWing::Object::SHOT )
 			shots.push_back( (Shot*) obj_iter->second );
 		else if( obj_iter->second->Type() == XWing::Object::ASTEROID )
@@ -1256,7 +1274,7 @@ void RenderLayer::Draw( void )
 	if( use_shaders )
 	{
 		game->ShaderMgr.ResumeShaders();
-		game->ShaderMgr.Set3f( "CamPos", game->Cam.X, game->Cam.Y, game->Cam.Z );
+		game->ShaderMgr.Set3f( "CamPos", 0., 0., 0. );
 		SetWorldLights( game->GameType == XWing::GameType::BATTLE_OF_YAVIN );
 		ClearDynamicLights();
 		blastpoints = game->BlastPoints;
@@ -1312,7 +1330,7 @@ void RenderLayer::Draw( void )
 	
 	// Render to textures before drawing anything else.
 	
-	bool need_target_holo = game->FrameTime || (observed_turret && (game->View == XWing::View::GUNNER));
+	bool need_target_holo = game->FrameTime || vr || (observed_turret && (game->View == XWing::View::GUNNER));
 	if( game->Gfx.Framebuffers && game->FrameTime )
 	{
 		bool changed_framebuffer = false;
@@ -1476,11 +1494,11 @@ void RenderLayer::Draw( void )
 
 				if( use_shaders )
 				{
-					game->ShaderMgr.StopShaders();
 					game->ShaderMgr.Select( game->Res.GetShader("model") );
+					game->ShaderMgr.ResumeShaders();
 				}
-				
-				
+
+
 				// Show shield direction.
 				
 				if( observed_ship->MaxShield() > 0. )
@@ -1589,10 +1607,10 @@ void RenderLayer::Draw( void )
 						
 						if( use_shaders )
 						{
-							game->ShaderMgr.StopShaders();
 							game->ShaderMgr.Select( game->Res.GetShader("model") );
+							game->ShaderMgr.ResumeShaders();
 						}
-						
+
 						glLineWidth( 2.f );
 						target_ship->DrawWireframe();
 						
@@ -1667,10 +1685,10 @@ void RenderLayer::Draw( void )
 						
 						if( use_shaders )
 						{
-							game->ShaderMgr.StopShaders();
 							game->ShaderMgr.Select( game->Res.GetShader("model") );
+							game->ShaderMgr.ResumeShaders();
 						}
-						
+
 						glLineWidth( 2.f );
 						target_turret->DrawWireframe();
 					}
@@ -2700,7 +2718,7 @@ void RenderLayer::Draw( void )
 			game->Cam.Copy( &camera_pos );
 			game->Gfx.Setup3D( &(game->Cam) );
 			if( use_shaders )
-				game->ShaderMgr.Set3f( "CamPos", game->Cam.X, game->Cam.Y, game->Cam.Z );
+				game->ShaderMgr.Set3f( "CamPos", 0., 0., 0. );
 			double sway = vr ? game->Cfg.SettingAsDouble("vr_sway") : game->Cfg.SettingAsDouble("g_sway",1.,1.);
 			if( sway )
 			{
@@ -2726,7 +2744,7 @@ void RenderLayer::Draw( void )
 			if( use_shaders )
 			{
 				// Restore camera position in shaders for lighting effects.
-				game->ShaderMgr.Set3f( "CamPos", game->Cam.X, game->Cam.Y, game->Cam.Z );
+				game->ShaderMgr.Set3f( "CamPos", 0., 0., 0. );
 				game->ShaderMgr.StopShaders();
 			}
 		}
@@ -3079,10 +3097,10 @@ void RenderLayer::Draw( void )
 		}
 		
 		
-		if( ( target || (target_obj && ( (target_obj->Type() == XWing::Object::SHOT) || (target_obj->Type() == XWing::Object::CHECKPOINT) )) ) && ! jumped_out )
+		if( ( target || (target_obj && ( (target_obj->Type() == XWing::Object::SHOT) || (target_obj->Type() == XWing::Object::CHECKPOINT) || (target_obj->Type() == XWing::Object::NAV_POINT) )) ) && ! jumped_out )
 		{
 			// Draw target box.
-			
+
 			double l = 0.;  // NOTE: Default value 0 is checked to see if the up and right vectors still need to be set.
 			double h = 10.;
 			double w = 10.;
@@ -3160,15 +3178,19 @@ void RenderLayer::Draw( void )
 				const Checkpoint *checkpoint = (const Checkpoint*) target_obj;
 				w = h = (checkpoint->Radius * 0.75);
 			}
-			
+			else if( target_obj->Type() == XWing::Object::NAV_POINT )
+			{
+				w = h = 20.;
+			}
+
 			if( ! l )  // If we're using ui_box_style 1/2 and targeting a ship, these vectors are already set.
 			{
 				up    = game->Cam.Up    * h / 2.;
 				right = game->Cam.Right * w / 2.;
 			}
-			
+
 			float red = 1.f, green = 1.f, blue = 1.f, alpha = 1.f;
-			bool friendly = (observed_team && target && target->Team && (target->Team == observed_team)) || (target_obj->Type() == XWing::Object::CHECKPOINT);
+			bool friendly = (observed_team && target && target->Team && (target->Team == observed_team)) || (target_obj->Type() == XWing::Object::CHECKPOINT) || (target_obj->Type() == XWing::Object::NAV_POINT);
 			std::vector<double> box_color = game->Cfg.SettingAsDoubles( friendly ? "ui_box_color2" : "ui_box_color" );
 			if( box_color.size() >= 3 )
 			{
@@ -3193,7 +3215,11 @@ void RenderLayer::Draw( void )
 			}
 			else if( friendly )
 				red = blue = 0.f;
-			
+			if( target_obj->Type() == XWing::Object::NAV_POINT )
+			{
+				red = 1.f; green = 1.f; blue = 0.f; alpha = 1.f;
+			}
+
 			float thickness = game->Cfg.SettingAsDouble( "ui_box_line", 1.5f, 1.5f );
 			
 			// Draw target box around selected subsystem.
@@ -3543,9 +3569,12 @@ void RenderLayer::Draw( void )
 					holo_pos.MoveAlong( &(head_pos.Up), -0.315 );
 				}
 				
+				if( use_shaders )
+					game->ShaderMgr.ResumeShaders();
+
 				glLineWidth( 1.f );
 				observed_target->DrawWireframeAt( &holo_pos, &holo_color1, holo_scale );
-				
+
 				// Draw hit/explosion effect when target is recently damaged.
 				double hit_time = observed_target->HitClock.ElapsedSeconds();
 				if( hit_time < (target ? 0.125 : 0.5) )
@@ -3569,7 +3598,10 @@ void RenderLayer::Draw( void )
 				
 				glLineWidth( 2.f );
 				observed_target->DrawWireframeAt( &holo_pos, &holo_color2, holo_scale );
-				
+
+				if( use_shaders )
+					game->ShaderMgr.StopShaders();
+
 				std::string target_name = observed_target->Name;
 				Player *target_player = observed_target->Owner();
 				if( target_player )
