@@ -20,6 +20,12 @@ sacrificing engine power.  Other than that, XWR tries to feel similar to classic
 Basically: a 90's combat flight sim with early 2000's graphics and modern internet play.
 
 
+== DMJC MODIFICATIONS ==
+I have forked this code as I wanted to work on a custom X-Wing Alliance style Engine for Star Wars gaming.
+I have focused on VR improvements focused around OpenVR support.
+I have also added multi-system jumping and a new mission type around supporting this style of gameplay.
+I have also added a GTK based Mission editor for Linux (but also for Windows/Mac to enable creating new mission content).
+
 == CREDITS AND THANKS ==
 
 Most of these ship models are from the X-Wing Alliance Upgrade Craft Pack circa 2012.
